@@ -1,0 +1,155 @@
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { config } from './config.js';
+import { sanitize, formatListToHTML, log } from './utils.js';
+
+/**
+ * Génère le HTML des témoignages
+ * @param {Array<{text: string, author: string}>} testimonials
+ * @returns {string}
+ */
+function buildTestimonialsHTML(testimonials) {
+  if (!Array.isArray(testimonials) || testimonials.length === 0) return '';
+
+  return testimonials
+    .map(t => `
+      <div class="testimonial-card">
+        <p class="testimonial-text">"${sanitize(t.text)}"</p>
+        <p class="testimonial-author">— ${sanitize(t.author)}</p>
+      </div>`)
+    .join('\n');
+}
+
+/**
+ * Génère le HTML des services
+ * @param {string[]} services
+ * @returns {string}
+ */
+function buildServicesHTML(services) {
+  if (!Array.isArray(services) || services.length === 0) return '';
+
+  const icons = ['🔧', '⚡', '🎯', '💡', '🛡️', '📞'];
+
+  return services
+    .map((service, index) => `
+      <div class="service-card">
+        <span class="service-icon">${icons[index % icons.length]}</span>
+        <p class="service-text">${sanitize(service)}</p>
+      </div>`)
+    .join('\n');
+}
+
+/**
+ * Remplace tous les placeholders dans le template HTML
+ * @param {string} templateHTML
+ * @param {Object} lead - lead enrichi avec contenu IA
+ * @returns {string}
+ */
+function replacePlaceholders(templateHTML, lead) {
+  const { content } = lead;
+
+  const replacements = {
+    '{{name}}': sanitize(lead.name),
+    '{{activity}}': sanitize(lead.activity),
+    '{{city}}': sanitize(lead.city),
+    '{{email}}': sanitize(lead.email || ''),
+    '{{phone}}': sanitize(lead.phone || ''),
+    '{{heroTitle}}': sanitize(content.heroTitle),
+    '{{heroSubtitle}}': sanitize(content.heroSubtitle),
+    '{{cta}}': sanitize(content.cta),
+    '{{services}}': buildServicesHTML(content.services),
+    '{{benefits}}': formatListToHTML(content.benefits, 'benefits-list'),
+    '{{testimonials}}': buildTestimonialsHTML(content.testimonials),
+    '{{year}}': new Date().getFullYear().toString(),
+    '{{slug}}': lead.slug,
+  };
+
+  let html = templateHTML;
+
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    // Remplacement global de tous les occurrences
+    html = html.split(placeholder).join(value);
+  }
+
+  return html;
+}
+
+/**
+ * Construit et sauvegarde le site HTML d'un lead
+ * @param {string} templateHTML - contenu du template
+ * @param {Object} lead - lead enrichi
+ * @returns {Promise<string>} chemin du fichier généré
+ */
+async function buildSingleSite(templateHTML, lead) {
+  const outputDir = join(config.paths.output, lead.slug);
+  const outputFile = join(outputDir, 'index.html');
+
+  // Créer le dossier de sortie
+  await mkdir(outputDir, { recursive: true });
+
+  // Générer le HTML final
+  const finalHTML = replacePlaceholders(templateHTML, lead);
+
+  // Écrire le fichier
+  await writeFile(outputFile, finalHTML, 'utf-8');
+
+  return outputFile;
+}
+
+/**
+ * Construit les sites HTML pour tous les leads enrichis
+ * Point d'entrée principal du builder
+ *
+ * @param {Object[]} enrichedLeads - leads avec contenu IA
+ * @returns {Promise<Object[]>} résultats de construction
+ */
+export async function buildAllSites(enrichedLeads) {
+  // Charger le template une seule fois
+  let templateHTML;
+  try {
+    templateHTML = await readFile(config.paths.template, 'utf-8');
+  } catch (error) {
+    throw new Error(`Impossible de lire le template: ${config.paths.template} — ${error.message}`);
+  }
+
+  // Créer le dossier output principal
+  await mkdir(config.paths.output, { recursive: true });
+
+  const results = [];
+
+  for (const lead of enrichedLeads) {
+    if (lead.status !== 'success' || !lead.content) {
+      log('warn', `[Builder] Skip "${lead.name}" (statut: ${lead.status})`);
+      results.push({
+        lead: lead.name,
+        slug: lead.slug,
+        status: 'skipped',
+        reason: lead.error || 'Contenu manquant',
+      });
+      continue;
+    }
+
+    try {
+      const outputPath = await buildSingleSite(templateHTML, lead);
+      log('success', `[Builder] Site généré: ${outputPath}`);
+
+      results.push({
+        lead: lead.name,
+        slug: lead.slug,
+        status: 'built',
+        outputPath,
+        email: lead.email,
+      });
+    } catch (error) {
+      log('error', `[Builder] Échec "${lead.name}": ${error.message}`);
+      results.push({
+        lead: lead.name,
+        slug: lead.slug,
+        status: 'error',
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+}

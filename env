@@ -1,0 +1,14 @@
+# API IA (OpenAI ou compatible)
+AI_API_KEY=your_openai_api_key_here
+AI_MODEL=gpt-4o-mini
+AI_BASE_URL=https://api.openai.com/v1
+
+# Mode simulation (true = pas d'appel IA réel)
+AI_MOCK_MODE=false
+
+# Répertoire de sortie
+OUTPUT_DIR=./output
+
+# Déploiement (optionnel)
+DEPLOY_MODE=local
+VERCEL_TOKEN=

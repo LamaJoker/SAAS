@@ -1,0 +1,14 @@
+{
+  "name": "auto-demo-system",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Génération automatique de sites vitrines personnalisés pour prospects",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "dev": "node --watch src/main.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  }
+}
