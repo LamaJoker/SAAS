@@ -1,0 +1,17 @@
+{
+  "name": "auto-demo-saas",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Génération automatique de sites vitrines personnalisés pour prospects",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "dev": "node --watch src/main.js",
+    "server": "node src/api/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  }
+}
