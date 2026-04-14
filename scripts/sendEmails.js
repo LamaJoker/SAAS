@@ -1,49 +1,183 @@
 /**
- * sendEmails.js — Envoie un email de prospection à chaque lead dont le site est généré.
- *
- * Prérequis:
- *   npm install nodemailer
- *
- * Variables d'environnement requises:
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+ * sendEmails.js — Envoi optimisé avec rotation de templates, délais aléatoires,
+ * personnalisation forte et logs détaillés.
  *
  * Usage:
  *   node scripts/sendEmails.js --userId <USER_ID>
  *   node scripts/sendEmails.js --userId <USER_ID> --dry-run
  *   node scripts/sendEmails.js --userId <USER_ID> --siteId <SITE_ID>
+ *   node scripts/sendEmails.js --userId <USER_ID> --template 0  (force template index)
  */
 
 import nodemailer from 'nodemailer';
 import { parseArgs } from 'node:util';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ─── ARG PARSING ─────────────────────────────────────────────────────────────
 
 const { values: args } = parseArgs({
   options: {
-    userId:  { type: 'string' },
-    baseUrl: { type: 'string', default: process.env.BASE_URL || 'http://localhost:3000' },
-    siteId:  { type: 'string' },           // envoyer uniquement pour un site spécifique
-    delay:   { type: 'string', default: '2000' }, // ms entre chaque email
-    'dry-run': { type: 'boolean', default: false },
+    userId:     { type: 'string' },
+    baseUrl:    { type: 'string', default: process.env.BASE_URL || 'http://localhost:3000' },
+    siteId:     { type: 'string' },
+    delay:      { type: 'string', default: '3000' },
+    'dry-run':  { type: 'boolean', default: false },
+    template:   { type: 'string' },   // force template index (0,1,2)
   },
   strict: false,
 });
 
-const USER_ID  = args.userId  || process.env.USER_ID;
-const BASE_URL = args.baseUrl;
-const DRY_RUN  = args['dry-run'];
-const DELAY_MS = Math.max(0, parseInt(args.delay) || 2000);
+const USER_ID        = args.userId  || process.env.USER_ID;
+const BASE_URL       = args.baseUrl;
+const DRY_RUN        = args['dry-run'];
+const BASE_DELAY_MS  = Math.max(500, parseInt(args.delay) || 3000);
 const FILTER_SITE_ID = args.siteId;
+const FORCE_TEMPLATE = args.template !== undefined ? parseInt(args.template) : null;
 
 if (!USER_ID) {
   console.error('❌  userId requis. Usage: node scripts/sendEmails.js --userId <ID>');
   process.exit(1);
 }
+
+// ─── SUBJECT VARIANTS ─────────────────────────────────────────────────────────
+
+/**
+ * Trois sujets courts testés pour maximiser le taux d'ouverture.
+ * On tourne pour éviter les filtres antispam et mesurer ce qui marche.
+ */
+const SUBJECT_VARIANTS = [
+  (name, city) => `${name} — votre site est prêt`,
+  (name, city) => `J'ai créé quelque chose pour vous à ${city}`,
+  (name, city) => `Votre démo gratuite est en ligne (2 min à consulter)`,
+];
+
+// ─── EMAIL TEMPLATES ──────────────────────────────────────────────────────────
+
+/**
+ * Template 0 — Direct & professionnel
+ * Angle : "on l'a fait pour vous, regardez"
+ */
+function buildTemplate0({ name, city, activity, url, sender }) {
+  const subject = SUBJECT_VARIANTS[0](name, city);
+
+  const text = `Bonjour,
+
+J'ai créé une démo de site web pour ${name} à ${city}.
+
+Elle est disponible ici : ${url}
+
+Ça prend 2 minutes à regarder. Si ça vous intéresse, répondez à cet email.
+
+${sender}`;
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<style>
+  body{margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif}
+  .w{max-width:520px;margin:0 auto;padding:20px}
+  .c{background:#fff;border-radius:6px;padding:32px;border-top:3px solid #2563eb}
+  p{color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px}
+  .cta{display:block;background:#2563eb;color:#fff;text-decoration:none;
+       padding:14px 0;text-align:center;border-radius:6px;font-size:15px;
+       font-weight:bold;margin:24px 0}
+  small{color:#9ca3af;font-size:12px}
+</style>
+</head><body><div class="w"><div class="c">
+  <p>Bonjour,</p>
+  <p>J'ai créé une démo de site web pour <strong>${name}</strong> (${activity}) à <strong>${city}</strong>.</p>
+  <p>Ça prend <strong>2 minutes</strong> à regarder :</p>
+  <a href="${url}" class="cta">→ Voir ma démo gratuite</a>
+  <p>Si ça vous intéresse, répondez simplement à cet email.</p>
+  <p>Bonne journée,<br><strong>${sender}</strong></p>
+  <small>Pour ne plus recevoir nos messages : <a href="mailto:${process.env.SMTP_FROM}?subject=Désabonnement">se désabonner</a></small>
+</div></div></body></html>`;
+
+  return { subject, text, html };
+}
+
+/**
+ * Template 1 — Curiosité & intrigue
+ * Angle : "votre concurrent a déjà ça"
+ */
+function buildTemplate1({ name, city, activity, url, sender }) {
+  const subject = SUBJECT_VARIANTS[1](name, city);
+
+  const text = `Bonjour,
+
+Les ${activity}s de ${city} qui ont un bon site web reçoivent 3x plus de contacts.
+
+J'en ai créé un pour ${name} — gratuit, sans engagement.
+
+Consultez-le ici : ${url}
+
+Répondez si vous voulez en discuter.
+
+${sender}`;
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<style>
+  body{margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif}
+  .w{max-width:520px;margin:0 auto;padding:20px}
+  .c{background:#fff;border-radius:6px;padding:32px}
+  .banner{background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;
+          border-radius:4px;margin-bottom:20px}
+  .banner p{margin:0;color:#92400e;font-size:14px;font-weight:600}
+  p{color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px}
+  .cta{display:block;background:#2563eb;color:#fff;text-decoration:none;
+       padding:14px 0;text-align:center;border-radius:6px;font-size:15px;
+       font-weight:bold;margin:24px 0}
+  small{color:#9ca3af;font-size:12px}
+</style>
+</head><body><div class="w"><div class="c">
+  <div class="banner"><p>💡 Les ${activity}s avec un site reçoivent 3× plus de contacts</p></div>
+  <p>Bonjour,</p>
+  <p>J'ai créé une démo de site pour <strong>${name}</strong> à <strong>${city}</strong>. C'est gratuit, sans engagement.</p>
+  <a href="${url}" class="cta">→ Voir mon site en 2 minutes</a>
+  <p>Si ce n'est pas le bon moment, pas de souci. Répondez juste "pas intéressé".</p>
+  <p>Bonne journée,<br><strong>${sender}</strong></p>
+  <small><a href="mailto:${process.env.SMTP_FROM}?subject=Désabonnement">Se désabonner</a></small>
+</div></div></body></html>`;
+
+  return { subject, text, html };
+}
+
+/**
+ * Template 2 — Ultra court (texte brut simulé)
+ * Angle : email "personnel", pas de marketing visible
+ */
+function buildTemplate2({ name, city, activity, url, sender }) {
+  const subject = SUBJECT_VARIANTS[2](name, city);
+
+  const text = `Bonjour,
+
+J'ai fait une démo de site pour vous : ${url}
+
+C'est pour ${name}, ${activity} à ${city}.
+
+Ça vous intéresse ?
+
+${sender}`;
+
+  // Volontairement simple — ressemble à un email perso
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<style>
+  body{margin:0;padding:0;background:#fff;font-family:Georgia,serif}
+  .w{max-width:500px;margin:0 auto;padding:40px 20px}
+  p{color:#1f2937;font-size:15px;line-height:1.8;margin:0 0 18px}
+  a.link{color:#2563eb}
+  small{color:#9ca3af;font-size:12px}
+</style>
+</head><body><div class="w">
+  <p>Bonjour,</p>
+  <p>J'ai créé une démo de site web pour <strong>${name}</strong> (${activity}, ${city}).</p>
+  <p>Vous pouvez la consulter ici : <a href="${url}" class="link">${url}</a></p>
+  <p>Ça vous intéresse ?</p>
+  <p>—<br><strong>${sender}</strong></p>
+  <small><a href="mailto:${process.env.SMTP_FROM}?subject=Désabonnement">Se désabonner</a></small>
+</div></body></html>`;
+
+  return { subject, text, html };
+}
+
+const TEMPLATES = [buildTemplate0, buildTemplate1, buildTemplate2];
 
 // ─── SMTP SETUP ───────────────────────────────────────────────────────────────
 
@@ -54,9 +188,7 @@ function createTransporter() {
   const pass = process.env.SMTP_PASS;
 
   if (!host || !user || !pass) {
-    throw new Error(
-      'Variables SMTP manquantes. Définissez SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS dans votre .env'
-    );
+    throw new Error('Variables SMTP manquantes (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS)');
   }
 
   return nodemailer.createTransport({
@@ -64,91 +196,26 @@ function createTransporter() {
     port,
     secure: port === 465,
     auth: { user, pass },
+    pool: true,
+    maxConnections: 3,
   });
 }
 
-// ─── EMAIL TEMPLATE ───────────────────────────────────────────────────────────
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 
-function buildEmailHTML({ businessName, city, demoUrl, senderName }) {
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Votre site est prêt</title>
-  <style>
-    body { margin:0; padding:0; background:#f4f4f7; font-family:Arial,sans-serif; }
-    .wrapper { max-width:600px; margin:0 auto; padding:20px; }
-    .card { background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
-    .header { background:linear-gradient(135deg,#6366f1,#8b5cf6); padding:32px 28px; text-align:center; }
-    .header h1 { color:#fff; font-size:22px; margin:0 0 4px; }
-    .header p  { color:rgba(255,255,255,.8); font-size:13px; margin:0; }
-    .body      { padding:28px; }
-    .body p    { color:#374151; font-size:14px; line-height:1.7; margin:0 0 14px; }
-    .cta-block { text-align:center; margin:28px 0; }
-    .cta-btn   { display:inline-block; background:#6366f1; color:#fff; text-decoration:none;
-                 padding:14px 32px; border-radius:6px; font-weight:bold; font-size:15px; }
-    .url-box   { background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;
-                 padding:10px 14px; font-family:monospace; font-size:12px; color:#6b7280;
-                 word-break:break-all; margin:12px 0; }
-    .footer    { padding:20px 28px; border-top:1px solid #f0f0f0; }
-    .footer p  { color:#9ca3af; font-size:12px; margin:0; line-height:1.6; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <div class="card">
-      <div class="header">
-        <h1>⚡ Votre site est prêt</h1>
-        <p>Nous avons créé quelque chose pour vous</p>
-      </div>
-      <div class="body">
-        <p>Bonjour,</p>
-        <p>
-          Nous avons créé une démonstration de site web pour <strong>${businessName}</strong>,
-          spécialisé dans votre secteur à <strong>${city}</strong>.
-        </p>
-        <p>
-          Ce site est conçu pour attirer vos clients locaux, mettre en valeur vos services
-          et générer plus de contacts. Vous pouvez le consulter dès maintenant :
-        </p>
-        <div class="cta-block">
-          <a href="${demoUrl}" class="cta-btn">🌐 Voir ma démo gratuite</a>
-        </div>
-        <div class="url-box">${demoUrl}</div>
-        <p>
-          Cette démonstration est personnalisée pour votre activité. Si vous souhaitez en discuter,
-          n'hésitez pas à nous répondre directement à cet email.
-        </p>
-        <p>Bonne journée,<br /><strong>${senderName || 'L\'équipe AutoDemo'}</strong></p>
-      </div>
-      <div class="footer">
-        <p>
-          Vous recevez cet email car votre entreprise a été identifiée comme pouvant bénéficier
-          d'une présence en ligne améliorée. Pour ne plus recevoir nos messages,
-          <a href="mailto:${process.env.SMTP_FROM}?subject=Désabonnement">cliquez ici</a>.
-        </p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/** Délai aléatoire entre BASE ± 50% pour éviter les patterns de spam */
+function randomDelay(baseMs) {
+  const jitter = baseMs * 0.5;
+  return baseMs + (Math.random() * jitter * 2 - jitter);
 }
 
-function buildEmailText({ businessName, city, demoUrl, senderName }) {
-  return `Bonjour,
-
-Nous avons créé une démonstration de site web pour ${businessName}, spécialisé dans votre secteur à ${city}.
-
-Consultez votre démo gratuite : ${demoUrl}
-
-Ce site est personnalisé pour votre activité. Répondez à cet email pour en discuter.
-
-Bonne journée,
-${senderName || "L'équipe AutoDemo"}`;
+/** Choisit un template en tournant (ou forcé) */
+function pickTemplate(index) {
+  if (FORCE_TEMPLATE !== null) return TEMPLATES[FORCE_TEMPLATE % TEMPLATES.length];
+  return TEMPLATES[index % TEMPLATES.length];
 }
-
-// ─── API ──────────────────────────────────────────────────────────────────────
 
 async function apiFetch(path) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -159,110 +226,120 @@ async function apiFetch(path) {
   return data.data;
 }
 
-// ─── SLEEP ────────────────────────────────────────────────────────────────────
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log('─'.repeat(60));
-  console.log('📬 AutoDemo — Envoi des emails de prospection');
-  console.log(`   Base URL  : ${BASE_URL}`);
-  console.log(`   User ID   : ${USER_ID}`);
-  console.log(`   Délai     : ${DELAY_MS}ms entre chaque email`);
-  console.log(`   Mode      : ${DRY_RUN ? '🔍 DRY RUN (aucun envoi)' : '📨 ENVOI RÉEL'}`);
+  console.log('📬 AutoDemo — Envoi emails (version optimisée)');
+  console.log(`   Base URL   : ${BASE_URL}`);
+  console.log(`   Délai base : ${BASE_DELAY_MS}ms ± 50% (aléatoire)`);
+  console.log(`   Templates  : ${FORCE_TEMPLATE !== null ? `forcé #${FORCE_TEMPLATE}` : 'rotation automatique'}`);
+  console.log(`   Mode       : ${DRY_RUN ? '🔍 DRY RUN' : '📨 ENVOI RÉEL'}`);
   console.log('─'.repeat(60));
 
-  // 1. Setup transporter (skip in dry-run)
+  // 1. Setup SMTP
   let transporter;
   if (!DRY_RUN) {
     try {
       transporter = createTransporter();
       await transporter.verify();
-      console.log('\n✅ Connexion SMTP OK');
+      console.log('\n✅ SMTP connecté');
     } catch (err) {
-      console.error(`\n❌ Connexion SMTP échouée: ${err.message}`);
+      console.error(`\n❌ SMTP échoué: ${err.message}`);
       process.exit(1);
     }
   }
 
-  // 2. Fetch sites
-  console.log('\n🌐 Récupération des sites générés…');
+  // 2. Récupération des sites
+  console.log('\n🌐 Récupération des sites…');
   let sites;
   try {
     sites = await apiFetch('/sites');
   } catch (err) {
-    console.error(`❌ Impossible de récupérer les sites: ${err.message}`);
+    console.error(`❌ ${err.message}`);
     process.exit(1);
   }
 
-  // 3. Filter
-  let toEmail = sites.filter(s => s.lead_email); // only leads with email
+  let toEmail = sites.filter(s => s.lead_email && s.lead_email.includes('@'));
+  if (FILTER_SITE_ID) toEmail = toEmail.filter(s => s.id === FILTER_SITE_ID);
 
-  if (FILTER_SITE_ID) {
-    toEmail = toEmail.filter(s => s.id === FILTER_SITE_ID);
-  }
-
-  console.log(`   Sites trouvés         : ${sites.length}`);
-  console.log(`   Avec adresse email    : ${toEmail.length}`);
+  console.log(`   Sites totaux avec email : ${toEmail.length} / ${sites.length}`);
 
   if (toEmail.length === 0) {
-    console.log('\n✅ Aucun email à envoyer. Fin du script.');
-    console.log('   (Conseil: ajoutez le champ "email" à vos leads pour activer l\'envoi)');
+    console.log('\n✅ Aucun email à envoyer.');
     return;
   }
 
-  // 4. Send emails
-  const SENDER_NAME = process.env.SMTP_SENDER_NAME || 'AutoDemo';
-  const FROM_EMAIL  = process.env.SMTP_FROM || process.env.SMTP_USER;
+  // 3. Envoi
+  const SENDER = process.env.SMTP_SENDER_NAME || 'AutoDemo';
+  const FROM   = process.env.SMTP_FROM || process.env.SMTP_USER;
+
   const stats = { sent: 0, failed: 0, skipped: 0 };
+  const log   = { sent: [], failed: [] };
 
-  console.log(`\n📨 Envoi vers ${toEmail.length} contact(s)…\n`);
+  console.log(`\n📨 Envoi vers ${toEmail.length} contacts…\n`);
 
-  for (const site of toEmail) {
-    const to   = site.lead_email;
-    const name = site.lead_name || 'Lead';
-    const prefix = `   [${name.slice(0, 20).padEnd(20)}] <${to}>`;
+  for (let i = 0; i < toEmail.length; i++) {
+    const site     = toEmail[i];
+    const to       = site.lead_email;
+    const name     = site.lead_name || 'votre entreprise';
+    const city     = site.city     || '';
+    const activity = site.activity || site.lead_activity || '';
+
+    const pad = `[${String(i + 1).padStart(3, ' ')}/${toEmail.length}]`;
 
     if (!to || !to.includes('@')) {
-      console.log(`${prefix} ⏭️  Email invalide — ignoré`);
+      console.log(`${pad} ⏭️  Email invalide — ignoré (${name})`);
       stats.skipped++;
       continue;
     }
 
+    const buildFn = pickTemplate(i);
+    const { subject, text, html } = buildFn({ name, city, activity, url: site.url, sender: SENDER });
+
     if (DRY_RUN) {
-      console.log(`${prefix} 🔍 [DRY RUN] Email qui serait envoyé`);
-      console.log(`      Démo : ${site.url}`);
+      console.log(`${pad} 🔍 [DRY] → ${to}`);
+      console.log(`        Sujet    : ${subject}`);
+      console.log(`        Template : #${i % TEMPLATES.length}`);
+      console.log(`        URL      : ${site.url}`);
       stats.sent++;
       continue;
     }
 
     try {
       await transporter.sendMail({
-        from:    `"${SENDER_NAME}" <${FROM_EMAIL}>`,
+        from:    `"${SENDER}" <${FROM}>`,
         to,
-        subject: `${name} — Votre site démo est prêt à consulter`,
-        text:    buildEmailText({ businessName: name, city: site.city || '', demoUrl: site.url, senderName: SENDER_NAME }),
-        html:    buildEmailHTML({ businessName: name, city: site.city || '', demoUrl: site.url, senderName: SENDER_NAME }),
+        subject,
+        text,
+        html,
       });
 
-      console.log(`${prefix} ✅ Envoyé`);
+      const delay = Math.round(randomDelay(BASE_DELAY_MS));
+      console.log(`${pad} ✅ Envoyé → ${to} (template #${i % TEMPLATES.length}, délai ${delay}ms)`);
+      log.sent.push({ to, name, template: i % TEMPLATES.length });
       stats.sent++;
+
+      if (i < toEmail.length - 1) await sleep(delay);
     } catch (err) {
-      console.log(`${prefix} ❌ ${err.message}`);
+      console.error(`${pad} ❌ Échec  → ${to} : ${err.message}`);
+      log.failed.push({ to, name, error: err.message });
       stats.failed++;
     }
-
-    if (DELAY_MS > 0) await sleep(DELAY_MS);
   }
 
-  // 5. Summary
+  // 4. Résumé
   console.log('\n' + '─'.repeat(60));
-  console.log('📊 Résumé:');
-  console.log(`   ✅ Envoyés : ${stats.sent}`);
-  console.log(`   ❌ Échoués : ${stats.failed}`);
-  console.log(`   ⏭️  Ignorés : ${stats.skipped}`);
+  console.log('📊 Résumé final:');
+  console.log(`   ✅ Envoyés  : ${stats.sent}`);
+  console.log(`   ❌ Échoués  : ${stats.failed}`);
+  console.log(`   ⏭️  Ignorés  : ${stats.skipped}`);
+
+  if (log.failed.length > 0) {
+    console.log('\n   Échecs détaillés:');
+    log.failed.forEach(f => console.log(`   - ${f.to} (${f.name}) : ${f.error}`));
+  }
+
   console.log('─'.repeat(60));
 }
 
