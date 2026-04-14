@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Plomberie Dupont",
+    "activity": "Plombier",
+    "city": "Lyon",
+    "email": "contact@plomberie-dupont.fr",
+    "phone": "04 72 00 00 01"
+  },
+  {
+    "name": "Électricité Martin",
+    "activity": "Électricien",
+    "city": "Lyon",
+    "email": "martin.elec@gmail.com",
+    "phone": "04 72 00 00 02"
+  },
+  {
+    "name": "Garage Renault Leblanc",
+    "activity": "Garagiste",
+    "city": "Villeurbanne",
+    "email": "leblanc.garage@orange.fr",
+    "phone": "04 72 00 00 03"
+  },
+  {
+    "name": "Menuiserie Rousseau",
+    "activity": "Menuisier",
+    "city": "Grenoble",
+    "email": "rousseau.bois@free.fr",
+    "phone": "04 76 00 00 01"
+  },
+  {
+    "name": "Cabinet Dentaire Moreau",
+    "activity": "Dentiste",
+    "city": "Bordeaux",
+    "email": "dr.moreau@cabinet-dentaire.fr",
+    "phone": "05 56 00 00 01"
+  },
+  {
+    "name": "Boulangerie Lefebvre",
+    "activity": "Boulanger",
+    "city": "Nantes",
+    "email": "lefebvre.boulangerie@gmail.com",
+    "phone": "02 40 00 00 01"
+  },
+  {
+    "name": "Toiture Expert Bernard",
+    "activity": "Couvreur",
+    "city": "Toulouse",
+    "email": "bernard.toiture@wanadoo.fr",
+    "phone": "05 61 00 00 01"
+  },
+  {
+    "name": "Peinture Petit",
+    "activity": "Peintre en bâtiment",
+    "city": "Marseille",
+    "email": "petit.peinture@laposte.net",
+    "phone": "04 91 00 00 01"
+  },
+  {
+    "name": "Serrurerie Michel",
+    "activity": "Serrurier",
+    "city": "Paris 15e",
+    "email": "michel.serrurerie@gmail.com",
+    "phone": "01 45 00 00 01"
+  },
+  {
+    "name": "Maçonnerie Garcia",
+    "activity": "Maçon",
+    "city": "Montpellier",
+    "email": "garcia.maconnerie@sfr.fr",
+    "phone": "04 67 00 00 01"
+  }
+]
