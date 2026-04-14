@@ -1,396 +1,596 @@
-/**
- * pipeline.js — Pipeline complet: import leads → génération sites → envoi emails
- *
- * Ce script orchestre tout le workflow en séquence :
- *   1. Importer/Vérifier des leads depuis un fichier JSON
- *   2. Générer les sites pour tous les leads "pending"
- *   3. Envoyer les emails de prospection aux leads avec email
- *
- * Usage:
- *   node scripts/pipeline.js --userId <USER_ID> --file ./data/leads.json
- *   node scripts/pipeline.js --userId <USER_ID> --file ./data/leads.json --skip-email
- *   node scripts/pipeline.js --userId <USER_ID> --no-import --skip-email
- *   node scripts/pipeline.js --userId <USER_ID> --dry-run
- *
- * Options:
- *   --userId     (requis) ID utilisateur
- *   --file       Fichier JSON de leads à importer (optionnel si leads déjà en base)
- *   --no-import  Sauter l'étape d'import (utiliser les leads existants)
- *   --skip-email Ne pas envoyer les emails
- *   --dry-run    Simuler sans rien écrire/envoyer
- *   --concurrency Nombre de générations en parallèle (défaut: 2)
- *   --delay      Délai entre emails en ms (défaut: 2000)
- *   --baseUrl    URL de l'API (défaut: http://localhost:3000)
- */
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="{{name}} — {{activity}} à {{city}}" />
+  <title>{{name}} — {{activity}} à {{city}}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
 
-import { readFileSync, existsSync } from 'node:fs';
-import { parseArgs } from 'node:util';
-import nodemailer from 'nodemailer';
-
-// ─── ARG PARSING ─────────────────────────────────────────────────────────────
-
-const { values: args } = parseArgs({
-  options: {
-    userId:      { type: 'string' },
-    file:        { type: 'string' },
-    'no-import': { type: 'boolean', default: false },
-    'skip-email':{ type: 'boolean', default: false },
-    'dry-run':   { type: 'boolean', default: false },
-    concurrency: { type: 'string', default: '2' },
-    delay:       { type: 'string', default: '2000' },
-    baseUrl:     { type: 'string', default: process.env.BASE_URL || 'http://localhost:3000' },
-  },
-  strict: false,
-});
-
-const USER_ID     = args.userId     || process.env.USER_ID;
-const BASE_URL    = args.baseUrl;
-const LEADS_FILE  = args.file;
-const NO_IMPORT   = args['no-import'];
-const SKIP_EMAIL  = args['skip-email'];
-const DRY_RUN     = args['dry-run'];
-const CONCURRENCY = Math.max(1, parseInt(args.concurrency) || 2);
-const EMAIL_DELAY = Math.max(0, parseInt(args.delay) || 2000);
-
-if (!USER_ID) {
-  console.error('❌  userId requis. Utilisez --userId <ID> ou définissez USER_ID dans .env');
-  process.exit(1);
-}
-
-// ─── LOGGER ───────────────────────────────────────────────────────────────────
-
-const log = {
-  info:    (...a) => console.log('  ℹ️ ', ...a),
-  success: (...a) => console.log('  ✅', ...a),
-  warn:    (...a) => console.log('  ⚠️ ', ...a),
-  error:   (...a) => console.error('  ❌', ...a),
-  step:    (n, t) => { console.log(); console.log(`${'━'.repeat(60)}\n  ÉTAPE ${n}: ${t.toUpperCase()}\n${'━'.repeat(60)}`); },
-};
-
-// ─── API HELPERS ──────────────────────────────────────────────────────────────
-
-async function apiFetch(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': USER_ID,
-      ...(options.headers || {}),
-    },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status} on ${path}`);
-  return data.data;
-}
-
-// ─── CONCURRENCY POOL ─────────────────────────────────────────────────────────
-
-async function pool(items, limit, fn) {
-  const results = [];
-  const queue   = [...items];
-
-  async function worker() {
-    while (queue.length > 0) {
-      const item = queue.shift();
-      results.push(await fn(item).catch(err => ({ __error: err.message, item })));
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-// ─── STEP 1: IMPORT LEADS ────────────────────────────────────────────────────
-
-async function stepImport() {
-  log.step(1, 'Import des leads');
-
-  if (NO_IMPORT) {
-    log.info('Import ignoré (--no-import)');
-    return { imported: 0, skipped: 0, errors: 0 };
-  }
-
-  if (!LEADS_FILE) {
-    log.warn('Aucun fichier spécifié (--file). Import ignoré.');
-    log.info('Les leads existants en base seront utilisés.');
-    return { imported: 0, skipped: 0, errors: 0 };
-  }
-
-  if (!existsSync(LEADS_FILE)) {
-    log.error(`Fichier introuvable: ${LEADS_FILE}`);
-    process.exit(1);
-  }
-
-  let leads;
-  try {
-    const raw = readFileSync(LEADS_FILE, 'utf-8');
-    leads = JSON.parse(raw);
-    if (!Array.isArray(leads)) throw new Error('Le JSON doit être un tableau.');
-  } catch (err) {
-    log.error(`Fichier invalide: ${err.message}`);
-    process.exit(1);
-  }
-
-  log.info(`${leads.length} lead(s) dans le fichier`);
-
-  if (DRY_RUN) {
-    log.info('[DRY RUN] Leads qui seraient importés:');
-    leads.slice(0, 5).forEach((l, i) => log.info(`  ${i + 1}. ${l.name} — ${l.city}`));
-    if (leads.length > 5) log.info(`  … et ${leads.length - 5} autres`);
-    return { imported: leads.length, skipped: 0, errors: 0 };
-  }
-
-  const stats = { imported: 0, skipped: 0, errors: 0 };
-
-  for (const lead of leads) {
-    try {
-      await apiFetch('/leads', { method: 'POST', body: JSON.stringify(lead) });
-      log.success(`Importé: ${lead.name} (${lead.city})`);
-      stats.imported++;
-    } catch (err) {
-      if (err.message.includes('409') || err.message.toLowerCase().includes('conflict')) {
-        log.info(`Ignoré (déjà existant): ${lead.name}`);
-        stats.skipped++;
-      } else {
-        log.error(`Erreur pour "${lead.name}": ${err.message}`);
-        stats.errors++;
-      }
-    }
-  }
-
-  log.info(`Import terminé — ${stats.imported} ajoutés, ${stats.skipped} ignorés, ${stats.errors} erreurs`);
-  return stats;
-}
-
-// ─── STEP 2: GENERATE SITES ──────────────────────────────────────────────────
-
-async function stepGenerate() {
-  log.step(2, 'Génération des sites');
-
-  // Fetch pending leads
-  let leads;
-  try {
-    leads = await apiFetch('/leads');
-  } catch (err) {
-    log.error(`Impossible de récupérer les leads: ${err.message}`);
-    process.exit(1);
-  }
-
-  const pending = leads.filter(l => l.status === 'pending');
-  log.info(`Leads en attente de génération: ${pending.length} / ${leads.length}`);
-
-  if (pending.length === 0) {
-    log.info('Aucun lead à générer.');
-    return { success: 0, failed: 0 };
-  }
-
-  // Check credits
-  try {
-    const { credits } = await apiFetch('/sites/credits');
-    log.info(`Crédits disponibles: ${credits}`);
-    if (credits < pending.length) {
-      log.warn(`Crédits insuffisants (${credits}) pour ${pending.length} leads. Traitement partiel.`);
-    }
-  } catch { /* non bloquant */ }
-
-  if (DRY_RUN) {
-    log.info('[DRY RUN] Sites qui seraient générés:');
-    pending.forEach((l, i) => log.info(`  ${i + 1}. ${l.name} (${l.city})`));
-    return { success: pending.length, failed: 0 };
-  }
-
-  const stats = { success: 0, failed: 0 };
-
-  await pool(pending, CONCURRENCY, async (lead) => {
-    try {
-      const site = await apiFetch('/generate', {
-        method: 'POST',
-        body: JSON.stringify({ leadId: lead.id }),
-      });
-      log.success(`Généré: ${lead.name} → ${site.url}`);
-      stats.success++;
-    } catch (err) {
-      log.error(`Échec pour "${lead.name}": ${err.message}`);
-      stats.failed++;
-    }
-  });
-
-  log.info(`Génération terminée — ${stats.success} réussis, ${stats.failed} échecs`);
-  return stats;
-}
-
-// ─── STEP 3: SEND EMAILS ─────────────────────────────────────────────────────
-
-async function stepSendEmails() {
-  log.step(3, 'Envoi des emails de prospection');
-
-  if (SKIP_EMAIL) {
-    log.info('Envoi d\'emails ignoré (--skip-email)');
-    return { sent: 0, skipped: 0, failed: 0 };
-  }
-
-  // Setup SMTP
-  let transporter;
-  if (!DRY_RUN) {
-    const host = process.env.SMTP_HOST;
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-
-    if (!host || !user || !pass) {
-      log.warn('Variables SMTP manquantes (SMTP_HOST, SMTP_USER, SMTP_PASS).');
-      log.warn('Envoi des emails ignoré. Configurez votre .env pour activer cette étape.');
-      return { sent: 0, skipped: 0, failed: 0 };
+    :root {
+      --primary:   #2563eb;
+      --primary-h: #1d4ed8;
+      --accent:    #f59e0b;
+      --success:   #16a34a;
+      --text:      #1f2937;
+      --text-muted:#6b7280;
+      --bg:        #ffffff;
+      --bg-light:  #f8fafc;
+      --border:    #e5e7eb;
+      --radius:    8px;
+      --shadow:    0 4px 24px rgba(0,0,0,.08);
     }
 
-    try {
-      transporter = nodemailer.createTransport({
-        host,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_PORT === '465',
-        auth: { user, pass },
-      });
-      await transporter.verify();
-      log.success('Connexion SMTP OK');
-    } catch (err) {
-      log.error(`Connexion SMTP échouée: ${err.message}`);
-      log.warn('Envoi des emails ignoré.');
-      return { sent: 0, skipped: 0, failed: 0 };
-    }
-  }
-
-  // Fetch sites
-  let sites;
-  try {
-    sites = await apiFetch('/sites');
-  } catch (err) {
-    log.error(`Impossible de récupérer les sites: ${err.message}`);
-    return { sent: 0, skipped: 0, failed: 0 };
-  }
-
-  const withEmail = sites.filter(s => s.lead_email && s.lead_email.includes('@'));
-  log.info(`Sites avec adresse email: ${withEmail.length} / ${sites.length}`);
-
-  if (withEmail.length === 0) {
-    log.warn('Aucun lead avec email. Ajoutez le champ "email" lors de l\'import.');
-    return { sent: 0, skipped: 0, failed: 0 };
-  }
-
-  const FROM   = process.env.SMTP_FROM  || process.env.SMTP_USER;
-  const SENDER = process.env.SMTP_SENDER_NAME || 'AutoDemo';
-  const stats  = { sent: 0, skipped: 0, failed: 0 };
-
-  for (const site of withEmail) {
-    const name = site.lead_name || 'Votre entreprise';
-    const city = site.city || '';
-
-    if (DRY_RUN) {
-      log.info(`[DRY RUN] Email → ${site.lead_email} | ${name} | ${site.url}`);
-      stats.sent++;
-      continue;
+    body {
+      font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
     }
 
-    try {
-      await transporter.sendMail({
-        from:    `"${SENDER}" <${FROM}>`,
-        to:      site.lead_email,
-        subject: `${name} — Votre site démo est prêt`,
-        text:    `Bonjour,\n\nVotre démo est disponible : ${site.url}\n\nBonne journée,\n${SENDER}`,
-        html:    buildProspectEmail({ name, city, url: site.url, sender: SENDER }),
-      });
-      log.success(`Email envoyé → ${site.lead_email}`);
-      stats.sent++;
-    } catch (err) {
-      log.error(`Échec envoi → ${site.lead_email}: ${err.message}`);
-      stats.failed++;
+    /* ─── BANDEAU D'URGENCE (nouveau) ───────────────────── */
+    .urgency-bar {
+      background: #1e3a5f;
+      color: #fff;
+      text-align: center;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    .urgency-bar span { color: #fbbf24; }
+
+    /* ─── HEADER / NAV ───────────────────────────────────── */
+    header {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    nav {
+      max-width: 1100px;
+      margin: 0 auto;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-brand {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a {
+      font-size: 14px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--primary); }
+    .nav-cta {
+      background: var(--primary);
+      color: #fff !important;
+      padding: 8px 18px;
+      border-radius: var(--radius);
+      font-weight: 600;
+    }
+    .nav-cta:hover { background: var(--primary-h) !important; }
+
+    /* ─── HERO ──────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+      padding: 72px 24px 60px;
+      text-align: center;
+    }
+    .hero .container { max-width: 740px; margin: 0 auto; }
+
+    .hero-badge {
+      display: inline-block;
+      background: rgba(37,99,235,.1);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      padding: 4px 14px;
+      border-radius: 20px;
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 5vw, 46px);
+      font-weight: 800;
+      line-height: 1.2;
+      color: var(--text);
+      margin-bottom: 18px;
+    }
+    .hero .subtitle {
+      font-size: 17px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+      line-height: 1.7;
     }
 
-    if (EMAIL_DELAY > 0) await sleep(EMAIL_DELAY);
-  }
+    /* ─── CTA PRINCIPAL (nouveau — immédiatement visible) ── */
+    .hero-cta-block {
+      background: #fff;
+      border: 2px solid var(--primary);
+      border-radius: 12px;
+      padding: 24px 28px;
+      max-width: 460px;
+      margin: 0 auto 32px;
+      box-shadow: 0 8px 32px rgba(37,99,235,.12);
+    }
+    .hero-cta-block p {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+    .hero-cta-block strong { color: var(--text); }
 
-  log.info(`Emails terminés — ${stats.sent} envoyés, ${stats.failed} échoués, ${stats.skipped} ignorés`);
-  return stats;
-}
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all .2s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      width: 100%;
+      justify-content: center;
+      font-size: 16px;
+      padding: 15px;
+    }
+    .btn-primary:hover {
+      background: var(--primary-h);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(37,99,235,.35);
+    }
+    .btn-outline {
+      background: #fff;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+    }
+    .btn-outline:hover { background: var(--primary); color: #fff; }
+    .btn-full { width: 100%; justify-content: center; }
 
-// ─── EMAIL TEMPLATE ───────────────────────────────────────────────────────────
+    /* Badges de confiance sous le CTA */
+    .trust-badges {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--success);
+      font-weight: 600;
+    }
 
-function buildProspectEmail({ name, city, url, sender }) {
-  return `<!DOCTYPE html>
-<html lang="fr"><head><meta charset="UTF-8">
-<style>
-  body{margin:0;padding:0;background:#f4f4f7;font-family:Arial,sans-serif}
-  .wrap{max-width:580px;margin:0 auto;padding:20px}
-  .card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  .head{background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:28px;text-align:center;border-radius:8px 8px 0 0}
-  .head h1{color:#fff;font-size:20px;margin:0}
-  .body{padding:28px;color:#374151;font-size:14px;line-height:1.7}
-  .cta{text-align:center;margin:24px 0}
-  .cta a{background:#6366f1;color:#fff;text-decoration:none;padding:13px 30px;border-radius:6px;font-weight:bold}
-  .foot{padding:16px 28px;border-top:1px solid #f0f0f0;font-size:12px;color:#9ca3af}
-</style>
-</head><body><div class="wrap"><div class="card">
-<div class="head"><h1>⚡ Votre site démo est prêt</h1></div>
-<div class="body">
-  <p>Bonjour,</p>
-  <p>Nous avons créé une démo personnalisée pour <strong>${name}</strong>${city ? ` à ${city}` : ''}.</p>
-  <p>Ce site est optimisé pour convertir vos prospects locaux en clients.</p>
-  <div class="cta"><a href="${url}">🌐 Voir ma démo gratuite</a></div>
-  <p>Répondez à cet email pour en discuter.</p>
-  <p>Bonne journée,<br><strong>${sender}</strong></p>
-</div>
-<div class="foot">Pour ne plus recevoir nos emails, répondez avec "Désinscription".</div>
-</div></div></body></html>`;
-}
+    /* ─── "CE SITE EST PRÊT POUR VOUS" (nouveau) ────────── */
+    .ready-banner {
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 10px;
+      padding: 20px 24px;
+      max-width: 660px;
+      margin: 0 auto 28px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      text-align: left;
+    }
+    .ready-banner .icon { font-size: 32px; flex-shrink: 0; }
+    .ready-banner h3 { font-size: 16px; font-weight: 700; color: #166534; margin-bottom: 4px; }
+    .ready-banner p  { font-size: 13px; color: #15803d; line-height: 1.5; }
 
-// ─── MAIN ─────────────────────────────────────────────────────────────────────
+    /* ─── ARGUMENTS RAPIDES (nouveau) ───────────────────── */
+    .quick-args {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .quick-arg {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 13px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
 
-async function main() {
-  const startTime = Date.now();
+    /* ─── SECTIONS ──────────────────────────────────────── */
+    section { padding: 64px 24px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--primary);
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: clamp(22px, 3.5vw, 32px);
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+    .section-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 560px;
+      line-height: 1.7;
+    }
 
-  console.log('═'.repeat(60));
-  console.log('🚀 AutoDemo — Pipeline complet');
-  console.log(`   Base URL    : ${BASE_URL}`);
-  console.log(`   User ID     : ${USER_ID}`);
-  console.log(`   Fichier     : ${LEADS_FILE || 'aucun'}`);
-  console.log(`   Concurrence : ${CONCURRENCY}`);
-  console.log(`   Mode        : ${DRY_RUN ? '🔍 DRY RUN' : '⚡ PRODUCTION'}`);
-  console.log('═'.repeat(60));
+    /* ─── SERVICES ──────────────────────────────────────── */
+    #services { background: var(--bg-light); }
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      margin-top: 40px;
+    }
+    .service-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      transition: box-shadow .2s, transform .2s;
+    }
+    .service-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+    .service-icon {
+      font-size: 26px;
+      flex-shrink: 0;
+      width: 50px;
+      height: 50px;
+      background: rgba(37,99,235,.08);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .service-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
 
-  // Run pipeline
-  const importStats   = await stepImport();
-  const generateStats = await stepGenerate();
-  const emailStats    = await stepSendEmails();
+    /* ─── BENEFITS ──────────────────────────────────────── */
+    .benefits-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+      margin-top: 40px;
+    }
+    .benefits-visual {
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      font-size: 64px;
+    }
+    .benefits-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+    .benefits-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .benefits-list li::before {
+      content: '✓';
+      background: var(--primary);
+      color: #fff;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
 
-  // Final summary
-  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    /* ─── TESTIMONIALS ──────────────────────────────────── */
+    #testimonials { background: var(--bg-light); }
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-top: 40px;
+    }
+    .testimonial-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      position: relative;
+    }
+    .testimonial-card::before {
+      content: '"';
+      font-size: 56px;
+      font-family: Georgia, serif;
+      color: var(--primary);
+      opacity: .15;
+      position: absolute;
+      top: 8px;
+      left: 16px;
+      line-height: 1;
+    }
+    .testimonial-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text);
+      margin-bottom: 14px;
+      padding-top: 16px;
+    }
+    .testimonial-author { font-size: 13px; font-weight: 600; color: var(--primary); }
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('📊 RÉSUMÉ DU PIPELINE');
-  console.log('═'.repeat(60));
-  console.log(`\n   Étape 1 — Import:`);
-  console.log(`     Importés : ${importStats.imported}`);
-  console.log(`     Ignorés  : ${importStats.skipped}`);
-  console.log(`     Erreurs  : ${importStats.errors}`);
-  console.log(`\n   Étape 2 — Génération:`);
-  console.log(`     Réussis  : ${generateStats.success}`);
-  console.log(`     Échoués  : ${generateStats.failed}`);
-  console.log(`\n   Étape 3 — Emails:`);
-  console.log(`     Envoyés  : ${emailStats.sent}`);
-  console.log(`     Échoués  : ${emailStats.failed}`);
-  console.log(`     Ignorés  : ${emailStats.skipped}`);
-  console.log(`\n   ⏱️  Durée totale: ${duration}s`);
-  console.log('═'.repeat(60));
+    /* ─── CTA SECTION FINALE (améliorée) ────────────────── */
+    #contact {
+      background: linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%);
+      text-align: center;
+    }
+    #contact .section-label { color: #93c5fd; }
+    #contact .section-title  { color: #fff; }
+    #contact .section-subtitle { color: rgba(255,255,255,.75); margin: 0 auto 32px; }
 
-  if (generateStats.failed > 0 || emailStats.failed > 0) {
-    console.log('\n⚠️  Des erreurs sont survenues. Vérifiez les logs ci-dessus.\n');
-  } else {
-    console.log('\n✅ Pipeline terminé avec succès.\n');
-  }
-}
+    .contact-cta-box {
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 500px;
+      margin: 0 auto 28px;
+    }
+    .contact-cta-box p {
+      color: rgba(255,255,255,.85);
+      font-size: 15px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .btn-white {
+      background: #fff;
+      color: var(--primary);
+      font-size: 16px;
+      padding: 15px 32px;
+      width: 100%;
+      justify-content: center;
+      font-weight: 700;
+    }
+    .btn-white:hover {
+      background: #f0f9ff;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(0,0,0,.2);
+    }
+    .btn-ghost-white {
+      background: transparent;
+      color: #fff;
+      border: 2px solid rgba(255,255,255,.4);
+      margin-top: 12px;
+      width: 100%;
+      justify-content: center;
+    }
+    .btn-ghost-white:hover {
+      background: rgba(255,255,255,.1);
+      border-color: rgba(255,255,255,.7);
+    }
 
-main().catch(err => {
-  console.error('\n💥 Erreur fatale:', err.message);
-  console.error(err.stack);
-  process.exit(1);
-});
+    .contact-info {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+    .contact-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,.12);
+      padding: 8px 16px;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────────── */
+    footer {
+      background: #0f172a;
+      color: #9ca3af;
+      text-align: center;
+      padding: 28px;
+      font-size: 13px;
+    }
+    footer strong { color: #fff; }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .benefits-layout { grid-template-columns: 1fr; }
+      .benefits-visual { display: none; }
+      .urgency-bar { font-size: 12px; }
+      .ready-banner { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BANDEAU URGENCE -->
+  <div class="urgency-bar">
+    ⚡ Ce site a été créé spécialement pour <span>{{name}}</span> à {{city}} — consultez-le gratuitement
+  </div>
+
+  <!-- NAVIGATION -->
+  <header>
+    <nav>
+      <a href="#" class="nav-brand">{{name}}</a>
+      <ul class="nav-links">
+        <li><a href="#services">Services</a></li>
+        <li><a href="#avantages">Avantages</a></li>
+        <li><a href="#avis">Avis clients</a></li>
+        <li><a href="#contact" class="nav-cta">📞 Nous contacter</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+
+      <!-- Badge localisation -->
+      <div class="hero-badge">📍 {{city}} — {{activity}}</div>
+
+      <h1>{{heroTitle}}</h1>
+      <p class="subtitle">{{heroSubtitle}}</p>
+
+      <!-- Bloc "site prêt pour vous" -->
+      <div class="ready-banner">
+        <div class="icon">🎯</div>
+        <div>
+          <h3>Ce site est déjà prêt pour vous</h3>
+          <p>Il a été conçu spécialement pour <strong>{{name}}</strong>, {{activity}} à <strong>{{city}}</strong>.
+          Contenu personnalisé, design professionnel, optimisé pour vos clients locaux.</p>
+        </div>
+      </div>
+
+      <!-- Arguments rapides -->
+      <div class="quick-args">
+        <div class="quick-arg">⚡ Livré en 24h</div>
+        <div class="quick-arg">✅ Sans effort de votre côté</div>
+        <div class="quick-arg">📱 Adapté mobile</div>
+        <div class="quick-arg">🎯 Clients de {{city}}</div>
+      </div>
+
+      <!-- CTA principal — visible immédiatement -->
+      <div class="hero-cta-block">
+        <p><strong>Ce site vous intéresse ?</strong><br>Contactez-nous pour le récupérer ou le personnaliser.</p>
+        {{#if email}}
+        <a href="mailto:{{email}}?subject=Je suis intéressé par mon site démo" class="btn btn-primary">
+          ✉️ Répondre par email
+        </a>
+        {{/if}}
+        {{#if phone}}
+        <a href="tel:{{phone}}" class="btn btn-primary" style="margin-top:10px">
+          📞 Appeler maintenant — {{phone}}
+        </a>
+        {{/if}}
+        {{#if !email}}{{#if !phone}}
+        <a href="#contact" class="btn btn-primary">
+          💬 Nous contacter
+        </a>
+        {{/if}}{{/if}}
+        <div class="trust-badges">
+          <div class="trust-item">✓ Gratuit &amp; sans engagement</div>
+          <div class="trust-item">✓ Réponse sous 24h</div>
+          <div class="trust-item">✓ Aucun abonnement</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section id="services">
+    <div class="container">
+      <div class="section-label">Nos prestations</div>
+      <h2 class="section-title">Ce que nous proposons à {{city}}</h2>
+      <p class="section-subtitle">Des solutions concrètes pour vos clients locaux, réalisées par des professionnels.</p>
+      <div class="services-grid">
+        {{services}}
+      </div>
+    </div>
+  </section>
+
+  <!-- BENEFITS -->
+  <section id="avantages">
+    <div class="container">
+      <div class="benefits-layout">
+        <div>
+          <div class="section-label">Pourquoi nous choisir</div>
+          <h2 class="section-title">Nos atouts à {{city}}</h2>
+          {{benefits}}
+          <a href="#contact" class="btn btn-primary" style="margin-top:28px;display:inline-flex">
+            Obtenir un devis →
+          </a>
+        </div>
+        <div class="benefits-visual">🏆</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section id="avis">
+    <div class="container">
+      <div class="section-label">Ce que disent nos clients</div>
+      <h2 class="section-title">Ils nous font confiance à {{city}}</h2>
+      <div class="testimonials-grid">
+        {{testimonials}}
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINALE (renforcée) -->
+  <section id="contact">
+    <div class="container">
+      <div class="section-label">Passez à l'action</div>
+      <h2 class="section-title">{{cta}}</h2>
+      <p class="section-subtitle">Devis gratuit, sans engagement. Réponse sous 24h.</p>
+
+      <div class="contact-cta-box">
+        <p>Vous êtes <strong>{{activity}}</strong> à <strong>{{city}}</strong> et ce site vous intéresse ? Contactez-nous — c'est gratuit.</p>
+        {{#if email}}
+        <a href="mailto:{{email}}?subject=Intéressé par mon site démo AutoDemo" class="btn btn-white">
+          ✉️ Écrire à {{email}}
+        </a>
+        {{/if}}
+        {{#if phone}}
+        <a href="tel:{{phone}}" class="btn btn-ghost-white">
+          📞 Appeler — {{phone}}
+        </a>
+        {{/if}}
+      </div>
+
+      <div class="contact-info">
+        <div class="contact-item">📍 Basé à {{city}}</div>
+        <div class="contact-item">✅ Devis gratuit</div>
+        <div class="contact-item">⚡ Réponse rapide</div>
+        <div class="contact-item">🔒 Sans engagement</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>
+      © {{year}} <strong>{{name}}</strong> — {{activity}} à {{city}}
+    </p>
+  </footer>
+
+</body>
+</html>
