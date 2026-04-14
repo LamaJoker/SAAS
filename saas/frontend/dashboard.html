@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoDemo — Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">AutoDemo</span>
+    </div>
+    <div class="topbar-right">
+      <div class="credits-badge" id="creditsBadge">
+        <span class="credits-icon">💳</span>
+        <span id="creditsCount">—</span> crédits
+      </div>
+      <span class="user-email" id="userEmail"></span>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn">Déconnexion</button>
+    </div>
+  </header>
+
+  <!-- MAIN LAYOUT -->
+  <main class="dashboard-layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <a href="#leads"   class="nav-item active" data-tab="leads">
+          👥 <span>Leads</span>
+        </a>
+        <a href="#sites"   class="nav-item"         data-tab="sites">
+          🌐 <span>Sites générés</span>
+        </a>
+        <a href="#add"     class="nav-item"         data-tab="add">
+          ➕ <span>Ajouter un lead</span>
+        </a>
+      </nav>
+    </aside>
+
+    <!-- CONTENT -->
+    <section class="content">
+
+      <!-- ========== TAB: LEADS ========== -->
+      <div id="tab-leads" class="tab-panel active">
+        <div class="panel-header">
+          <h2>Leads <span class="badge" id="leadsCount">0</span></h2>
+          <div class="panel-actions">
+            <button class="btn btn-secondary btn-sm" id="refreshLeadsBtn">🔄 Actualiser</button>
+          </div>
+        </div>
+
+        <div id="leadsLoading" class="loading-state">Chargement des leads…</div>
+        <div id="leadsEmpty"   class="empty-state hidden">
+          <span class="empty-icon">👥</span>
+          <p>Aucun lead pour l'instant.</p>
+          <button class="btn btn-primary" onclick="switchTab('add')">Ajouter un lead</button>
+        </div>
+
+        <div id="leadsTable" class="table-wrapper hidden">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Entreprise</th>
+                <th>Activité</th>
+                <th>Ville</th>
+                <th>Statut</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="leadsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ========== TAB: SITES ========== -->
+      <div id="tab-sites" class="tab-panel hidden">
+        <div class="panel-header">
+          <h2>Sites générés <span class="badge" id="sitesCount">0</span></h2>
+          <button class="btn btn-secondary btn-sm" id="refreshSitesBtn">🔄 Actualiser</button>
+        </div>
+
+        <div id="sitesLoading" class="loading-state">Chargement des sites…</div>
+        <div id="sitesEmpty"   class="empty-state hidden">
+          <span class="empty-icon">🌐</span>
+          <p>Aucun site généré pour l'instant.</p>
+        </div>
+
+        <div id="sitesGrid" class="sites-grid hidden"></div>
+      </div>
+
+      <!-- ========== TAB: ADD LEAD ========== -->
+      <div id="tab-add" class="tab-panel hidden">
+        <div class="panel-header">
+          <h2>Ajouter un lead</h2>
+        </div>
+
+        <form id="addLeadForm" class="form-card">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="leadName">Nom / Entreprise *</label>
+              <input type="text" id="leadName" placeholder="Ex: Plomberie Dupont" required maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label for="leadActivity">Activité *</label>
+              <input type="text" id="leadActivity" placeholder="Ex: Plombier, Électricien…" required maxlength="200" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="leadCity">Ville *</label>
+              <input type="text" id="leadCity" placeholder="Ex: Lyon" required maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label for="leadEmail">Email (optionnel)</label>
+              <input type="email" id="leadEmail" placeholder="contact@exemple.com" maxlength="200" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="leadPhone">Téléphone (optionnel)</label>
+              <input type="tel" id="leadPhone" placeholder="06 12 34 56 78" maxlength="30" />
+            </div>
+            <div class="form-group form-group-actions">
+              <button type="submit" class="btn btn-primary" id="addLeadBtn">
+                ➕ Ajouter le lead
+              </button>
+            </div>
+          </div>
+          <p id="addLeadMsg" class="form-msg hidden"></p>
+        </form>
+
+        <div class="import-section">
+          <h3>Import JSON</h3>
+          <p class="help-text">Importez plusieurs leads d'un coup via un fichier JSON.</p>
+          <div class="import-area">
+            <textarea id="jsonImport" placeholder='[{"name":"Garage Martin","activity":"Garagiste","city":"Bordeaux"},…]' rows="6"></textarea>
+            <button class="btn btn-secondary" id="importJsonBtn">📥 Importer</button>
+          </div>
+          <p id="importMsg" class="form-msg hidden"></p>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- GENERATE MODAL -->
+  <div id="generateModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3>🚀 Générer un site démo</h3>
+      <p id="generateModalInfo"></p>
+      <div id="generateModalLoading" class="modal-loading hidden">
+        <div class="spinner"></div>
+        <p>Génération en cours… (~10-20 secondes)</p>
+      </div>
+      <p id="generateModalError" class="form-error hidden"></p>
+      <div class="modal-actions" id="generateModalActions">
+        <button class="btn btn-secondary" id="cancelGenerateBtn">Annuler</button>
+        <button class="btn btn-primary"   id="confirmGenerateBtn">Générer (1 crédit)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
