@@ -1,89 +1,56 @@
 /**
- * generateBulk.js — Génère automatiquement les sites pour tous les leads "pending".
+ * generateBulk.js — Génération en masse avec skip des leads déjà traités,
+ * concurrence limitée et logs propres.
  *
  * Usage:
  *   node scripts/generateBulk.js --userId <USER_ID>
- *   node scripts/generateBulk.js --userId <USER_ID> --concurrency 2
+ *   node scripts/generateBulk.js --userId <USER_ID> --concurrency 3
+ *   node scripts/generateBulk.js --userId <USER_ID> --status all
  *   node scripts/generateBulk.js --userId <USER_ID> --dry-run
  */
 
-import fetch from 'node:http';
 import { parseArgs } from 'node:util';
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_BASE_URL   = process.env.BASE_URL    || 'http://localhost:3000';
-const DEFAULT_CONCURRENCY = parseInt(process.env.GEN_CONCURRENCY || '2');
-
-// ─── ARG PARSING ─────────────────────────────────────────────────────────────
-
 const { values: args } = parseArgs({
   options: {
     userId:      { type: 'string' },
-    baseUrl:     { type: 'string', default: DEFAULT_BASE_URL },
-    concurrency: { type: 'string', default: String(DEFAULT_CONCURRENCY) },
+    baseUrl:     { type: 'string', default: process.env.BASE_URL || 'http://localhost:3000' },
+    concurrency: { type: 'string', default: process.env.GEN_CONCURRENCY || '2' },
     'dry-run':   { type: 'boolean', default: false },
-    status:      { type: 'string', default: 'pending' }, // filter: pending | all
+    status:      { type: 'string', default: 'pending' },
+    retry:       { type: 'string', default: '2' },
+    delay:       { type: 'string', default: '500' }, // ms entre requêtes
   },
   strict: false,
 });
 
-const USER_ID    = args.userId    || process.env.USER_ID;
-const BASE_URL   = args.baseUrl;
-const CONCURRENCY = Math.max(1, parseInt(args.concurrency) || DEFAULT_CONCURRENCY);
-const DRY_RUN    = args['dry-run'];
-const STATUS_FILTER = args.status;
+const USER_ID     = args.userId  || process.env.USER_ID;
+const BASE_URL    = args.baseUrl;
+const CONCURRENCY = Math.min(5, Math.max(1, parseInt(args.concurrency) || 2)); // cap à 5
+const DRY_RUN     = args['dry-run'];
+const STATUS      = args.status;   // 'pending' | 'error' | 'all'
+const MAX_RETRY   = Math.max(1, parseInt(args.retry) || 2);
+const REQ_DELAY   = Math.max(0, parseInt(args.delay) || 500);
 
 if (!USER_ID) {
   console.error('❌  userId requis. Usage: node scripts/generateBulk.js --userId <ID>');
   process.exit(1);
 }
 
-// ─── HTTP HELPERS ─────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-function httpRequest(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const urlObj   = new URL(url);
-    const lib      = urlObj.protocol === 'https:' ? (await import('node:https')).default : (await import('node:http')).default;
-    const reqOpts  = {
-      hostname: urlObj.hostname,
-      port:     urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-      path:     urlObj.pathname + urlObj.search,
-      method:   options.method || 'GET',
-      headers:  {
-        'Content-Type': 'application/json',
-        'x-user-id':    USER_ID,
-        ...(options.headers || {}),
-      },
-    };
+const sleep   = (ms) => new Promise(r => setTimeout(r, ms));
+const ts      = ()   => new Date().toLocaleTimeString('fr-FR');
+const pad     = (i, total) => `[${String(i).padStart(String(total).length, ' ')}/${total}]`;
 
-    const req = lib.request(reqOpts, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          if (res.statusCode >= 400) reject(new Error(data.error || `HTTP ${res.statusCode}`));
-          else resolve(data.data);
-        } catch {
-          reject(new Error(`Invalid JSON response: ${body.slice(0, 100)}`));
-        }
-      });
-    });
-
-    req.on('error', reject);
-    if (options.body) req.write(options.body);
-    req.end();
-  });
-}
-
-// Simpler version using fetch (Node 18+)
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': USER_ID,
+      'x-user-id':    USER_ID,
       ...(options.headers || {}),
     },
   });
@@ -92,21 +59,37 @@ async function apiFetch(path, options = {}) {
   return data.data;
 }
 
-// ─── CONCURRENCY POOL ─────────────────────────────────────────────────────────
+async function withRetry(fn, attempts = MAX_RETRY, delayMs = 1500) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        console.log(`[${ts()}] ⚠️  Retry ${i + 1}/${attempts}: ${err.message}`);
+        await sleep(delayMs * (i + 1)); // backoff linéaire
+      }
+    }
+  }
+  throw lastErr;
+}
 
-async function runWithConcurrency(tasks, limit, fn) {
-  const results = [];
-  const queue   = [...tasks];
+// ─── POOL DE CONCURRENCE ──────────────────────────────────────────────────────
+
+async function pool(items, limit, fn) {
+  const queue   = [...items.entries()]; // [index, item]
+  const results = new Array(items.length);
 
   async function worker() {
     while (queue.length > 0) {
-      const task = queue.shift();
-      results.push(await fn(task).catch(err => ({ error: err.message, lead: task })));
+      const [i, item] = queue.shift();
+      results[i] = await fn(item, i).catch(err => ({ __error: err.message }));
+      if (REQ_DELAY > 0) await sleep(REQ_DELAY);
     }
   }
 
-  const workers = Array.from({ length: Math.min(limit, tasks.length) }, worker);
-  await Promise.all(workers);
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return results;
 }
 
@@ -114,16 +97,17 @@ async function runWithConcurrency(tasks, limit, fn) {
 
 async function main() {
   console.log('─'.repeat(60));
-  console.log('🚀 AutoDemo — Génération en masse');
-  console.log(`   Base URL   : ${BASE_URL}`);
-  console.log(`   User ID    : ${USER_ID}`);
-  console.log(`   Concurrence: ${CONCURRENCY}`);
-  console.log(`   Filtre     : statut="${STATUS_FILTER}"`);
-  console.log(`   Mode       : ${DRY_RUN ? '🔍 DRY RUN (aucune génération)' : '⚡ PRODUCTION'}`);
+  console.log(`[${ts()}] ⚡ AutoDemo — Génération en masse`);
+  console.log(`  URL         : ${BASE_URL}`);
+  console.log(`  User        : ${USER_ID}`);
+  console.log(`  Concurrence : ${CONCURRENCY} (max 5)`);
+  console.log(`  Filtre      : statut="${STATUS}"`);
+  console.log(`  Retry       : ${MAX_RETRY} tentatives`);
+  console.log(`  Mode        : ${DRY_RUN ? '🔍 DRY RUN' : '⚡ PRODUCTION'}`);
   console.log('─'.repeat(60));
 
-  // 1. Fetch leads
-  console.log('\n📋 Récupération des leads…');
+  // 1. Récupération des leads
+  console.log(`\n[${ts()}] 📋 Récupération des leads…`);
   let leads;
   try {
     leads = await apiFetch('/leads');
@@ -132,69 +116,90 @@ async function main() {
     process.exit(1);
   }
 
-  // 2. Filter
-  const toProcess = STATUS_FILTER === 'all'
-    ? leads
-    : leads.filter(l => l.status === STATUS_FILTER);
+  // 2. Filtrage
+  const statusFilter = STATUS === 'all'
+    ? () => true
+    : STATUS === 'error'
+      ? (l) => l.status === 'error' || l.status === 'pending'
+      : (l) => l.status === 'pending';
 
-  console.log(`   Total leads       : ${leads.length}`);
-  console.log(`   À générer (${STATUS_FILTER}) : ${toProcess.length}`);
+  const toProcess = leads.filter(statusFilter);
+
+  console.log(`  Total       : ${leads.length} leads`);
+  console.log(`  À traiter   : ${toProcess.length} (filtre: ${STATUS})`);
+  console.log(`  Ignorés     : ${leads.filter(l => l.status === 'done').length} déjà générés`);
 
   if (toProcess.length === 0) {
-    console.log('\n✅ Aucun lead à traiter. Fin du script.');
+    console.log(`\n✅ Aucun lead à traiter. Fin.`);
     return;
   }
 
-  // 3. Check credits
+  // 3. Vérification crédits
   try {
     const { credits } = await apiFetch('/sites/credits');
-    console.log(`\n💳 Crédits disponibles : ${credits}`);
-    if (credits < toProcess.length) {
-      console.warn(`⚠️  Crédits insuffisants pour traiter tous les leads (${credits} < ${toProcess.length})`);
-      console.warn('   Les premières générations seront traitées jusqu\'à épuisement des crédits.');
+    console.log(`\n  💳 Crédits : ${credits} disponible(s)`);
+    if (credits <= 0) {
+      console.error('❌ Aucun crédit disponible. Arrêt.');
+      process.exit(1);
     }
-  } catch (err) {
-    console.warn(`⚠️  Impossible de vérifier les crédits: ${err.message}`);
+    if (credits < toProcess.length) {
+      console.log(`  ⚠️  Traitement partiel (crédits insuffisants pour tout)`);
+    }
+  } catch {
+    console.log(`  ⚠️  Crédits non vérifiables (non bloquant)`);
   }
 
   if (DRY_RUN) {
     console.log('\n🔍 Mode DRY RUN — leads qui seraient générés:');
-    toProcess.forEach((l, i) => {
-      console.log(`   ${i + 1}. [${l.id.slice(0, 8)}] ${l.name} (${l.city})`);
-    });
+    toProcess.forEach((l, i) => console.log(`  ${pad(i + 1, toProcess.length)} ${l.name} (${l.city}) [${l.status}]`));
     return;
   }
 
-  // 4. Generate
-  console.log(`\n⚡ Démarrage de la génération (concurrence: ${CONCURRENCY})…\n`);
+  // 4. Génération avec pool
+  console.log(`\n[${ts()}] ⚡ Démarrage (${CONCURRENCY} en parallèle)…\n`);
 
   const stats = { success: 0, failed: 0, skipped: 0 };
+  const errors = [];
 
-  await runWithConcurrency(toProcess, CONCURRENCY, async (lead) => {
-    const prefix = `   [${lead.name.slice(0, 24).padEnd(24)}]`;
+  await pool(toProcess, CONCURRENCY, async (lead, i) => {
+    const label = `${pad(i + 1, toProcess.length)} ${lead.name.slice(0, 28).padEnd(28)} [${lead.city}]`;
+
+    // Skip si déjà généré (double-check en temps réel)
+    if (lead.status === 'done') {
+      console.log(`${label} ⏭️  Déjà généré`);
+      stats.skipped++;
+      return;
+    }
+
     try {
-      process.stdout.write(`${prefix} ⏳ Génération…`);
-      const site = await apiFetch('/generate', {
+      const site = await withRetry(() => apiFetch('/generate', {
         method: 'POST',
-        body: JSON.stringify({ leadId: lead.id }),
-      });
-      process.stdout.write(`\r${prefix} ✅ ${site.url}\n`);
+        body:   JSON.stringify({ leadId: lead.id }),
+      }));
+      console.log(`[${ts()}] ${label} ✅ ${site.url}`);
       stats.success++;
-      return { success: true, lead, site };
     } catch (err) {
-      process.stdout.write(`\r${prefix} ❌ ${err.message}\n`);
+      console.log(`[${ts()}] ${label} ❌ ${err.message}`);
       stats.failed++;
-      return { success: false, lead, error: err.message };
+      errors.push({ name: lead.name, error: err.message });
     }
   });
 
-  // 5. Summary
+  // 5. Résumé
   console.log('\n' + '─'.repeat(60));
-  console.log('📊 Résumé:');
-  console.log(`   ✅ Réussi  : ${stats.success}`);
-  console.log(`   ❌ Échoué  : ${stats.failed}`);
-  console.log(`   ⏭️  Ignoré  : ${stats.skipped}`);
-  console.log('─'.repeat(60));
+  console.log(`[${ts()}] 📊 Résumé:`);
+  console.log(`  ✅ Réussis  : ${stats.success}`);
+  console.log(`  ❌ Échoués  : ${stats.failed}`);
+  console.log(`  ⏭️  Ignorés  : ${stats.skipped}`);
+
+  if (errors.length > 0) {
+    console.log('\n  Détail des échecs:');
+    errors.forEach(e => console.log(`  - ${e.name}: ${e.error}`));
+  }
+
+  console.log('─'.repeat(60) + '\n');
+
+  process.exit(stats.failed > 0 ? 1 : 0);
 }
 
 main().catch(err => {
