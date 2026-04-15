@@ -1,45 +1,83 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { config } from '../config/config.js';
-import { sanitize, formatListToHTML } from '../utils/utils.js';
+import { sanitize, generateSlug } from '../utils/utils.js';
 import { logger } from '../utils/logger.js';
 
-/**
- * Génère le HTML des témoignages
- */
-function buildTestimonialsHTML(testimonials) {
-  if (!Array.isArray(testimonials) || testimonials.length === 0) return '';
-
-  return testimonials
-    .map(t => `
-      <div class="testimonial-card">
-        <p class="testimonial-text">${sanitize(t.text)}</p>
-        <p class="testimonial-author">— ${sanitize(t.author)}</p>
-      </div>`)
-    .join('\n');
-}
+const SERVICE_ICONS = ['🔧', '⚡', '🎯', '💡', '🛡️', '🔑', '📞', '🏆'];
 
 /**
- * Génère le HTML des services
+ * Génère les cartes service avec titre + description extraits de la string IA.
+ * L'IA retourne des strings du type "Conseil personnalisé et accompagnement sur mesure".
+ * On split sur " — " ou ":" si présent, sinon on prend tout comme description.
  */
 function buildServicesHTML(services) {
   if (!Array.isArray(services) || services.length === 0) return '';
 
-  const icons = ['🔧', '⚡', '🎯', '💡', '🛡️', '📞'];
+  return services.map((service, i) => {
+    const raw = String(service);
+    let title = '';
+    let desc  = raw;
 
-  return services
-    .map((service, index) => `
+    const sep = raw.indexOf(' — ') !== -1 ? ' — '
+              : raw.indexOf(': ') !== -1 ? ': '
+              : null;
+
+    if (sep) {
+      const parts = raw.split(sep);
+      title = sanitize(parts[0].trim());
+      desc  = sanitize(parts.slice(1).join(sep).trim());
+    } else {
+      desc  = sanitize(raw.trim());
+    }
+
+    const icon = SERVICE_ICONS[i % SERVICE_ICONS.length];
+
+    return `
       <div class="service-card">
-        <div class="service-icon">${icons[index % icons.length]}</div>
+        <div class="svc-icon">${icon}</div>
         <div>
-          <p class="service-text">${sanitize(service)}</p>
+          ${title ? `<div class="svc-title">${title}</div>` : ''}
+          <div class="svc-text">${desc}</div>
         </div>
-      </div>`)
-    .join('\n');
+      </div>`;
+  }).join('\n');
 }
 
 /**
- * Traite les blocs conditionnels {{#if field}}...{{/if}}
+ * Génère les cartes témoignage avec étoiles.
+ */
+function buildTestimonialsHTML(testimonials) {
+  if (!Array.isArray(testimonials) || testimonials.length === 0) return '';
+
+  const stars = '<div class="tcard-stars">' + '★'.repeat(5).split('').map(() =>
+    '<span class="star">★</span>').join('') + '</div>';
+
+  return testimonials.map(t => `
+    <div class="tcard">
+      ${stars}
+      <p class="tcard-text">${sanitize(t.text)}</p>
+      <div class="tcard-author">— ${sanitize(t.author)}</div>
+    </div>`).join('\n');
+}
+
+/**
+ * Génère la liste des avantages (benefits).
+ */
+function buildBenefitsHTML(benefits) {
+  if (!Array.isArray(benefits) || benefits.length === 0) return '';
+
+  return '<ul class="benefits-list">' +
+    benefits.map(b => `
+      <li>
+        <div class="check-icon">✓</div>
+        <span>${sanitize(String(b))}</span>
+      </li>`).join('') +
+    '</ul>';
+}
+
+/**
+ * Traite les blocs conditionnels {{#if field}}…{{/if}}.
  */
 function processConditionals(html, data) {
   return html.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key, content) => {
@@ -48,32 +86,30 @@ function processConditionals(html, data) {
 }
 
 /**
- * Remplace tous les placeholders dans le template HTML
+ * Remplace tous les placeholders du template.
  */
 function replacePlaceholders(templateHTML, lead, content) {
   const data = {
     name:         sanitize(lead.name),
     activity:     sanitize(lead.activity),
     city:         sanitize(lead.city),
-    email:        sanitize(lead.email || ''),
-    phone:        sanitize(lead.phone || ''),
+    email:        sanitize(lead.email   || ''),
+    phone:        sanitize(lead.phone   || ''),
     heroTitle:    sanitize(content.heroTitle),
     heroSubtitle: sanitize(content.heroSubtitle),
     cta:          sanitize(content.cta),
     services:     buildServicesHTML(content.services),
-    benefits:     formatListToHTML(content.benefits, 'benefits-list'),
+    benefits:     buildBenefitsHTML(content.benefits),
     testimonials: buildTestimonialsHTML(content.testimonials),
     year:         new Date().getFullYear().toString(),
     slug:         lead.slug || '',
   };
 
-  // 1. Process conditionals first
   let html = processConditionals(templateHTML, {
     email: !!lead.email,
     phone: !!lead.phone,
   });
 
-  // 2. Replace all simple placeholders
   for (const [key, value] of Object.entries(data)) {
     html = html.split(`{{${key}}}`).join(value);
   }
@@ -82,16 +118,15 @@ function replacePlaceholders(templateHTML, lead, content) {
 }
 
 /**
- * Construit et sauvegarde le site HTML d'un lead.
- * Retourne le chemin absolu du fichier généré.
+ * Construit et sauvegarde le site HTML pour un lead.
+ * @returns {string} chemin absolu du fichier généré
  */
 export async function buildSite({ lead, content, slug }) {
-  // Charger le template
   let templateHTML;
   try {
     templateHTML = await readFile(config.paths.template, 'utf-8');
-  } catch (error) {
-    throw new Error(`Impossible de lire le template: ${config.paths.template} — ${error.message}`);
+  } catch (err) {
+    throw new Error(`Impossible de lire le template: ${config.paths.template} — ${err.message}`);
   }
 
   const outputDir  = join(config.paths.output, slug);
