@@ -19,15 +19,21 @@ export function getDb() {
 
 export function runMigrations() {
   const db = getDb();
+  
+  // Table Users avec colonne désabonnement
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id         TEXT PRIMARY KEY,
       email      TEXT UNIQUE NOT NULL,
       name       TEXT,
       credits    INTEGER NOT NULL DEFAULT 0,
+      unsubscribed INTEGER DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
 
+  // Table Leads
+  db.exec(`
     CREATE TABLE IF NOT EXISTS leads (
       id         TEXT PRIMARY KEY,
       user_id    TEXT NOT NULL REFERENCES users(id),
@@ -39,7 +45,10 @@ export function runMigrations() {
       status     TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
 
+  // Table Sites avec tracking
+  db.exec(`
     CREATE TABLE IF NOT EXISTS sites (
       id          TEXT PRIMARY KEY,
       lead_id     TEXT NOT NULL REFERENCES leads(id),
@@ -52,7 +61,10 @@ export function runMigrations() {
       last_viewed TEXT,
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
 
+  // Table Events (Analytics)
+  db.exec(`
     CREATE TABLE IF NOT EXISTS events (
       id         TEXT PRIMARY KEY,
       type       TEXT NOT NULL,
@@ -62,14 +74,14 @@ export function runMigrations() {
       meta       TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-
-    CREATE INDEX IF NOT EXISTS idx_sites_slug    ON sites(slug);
-    CREATE INDEX IF NOT EXISTS idx_sites_user_id ON sites(user_id);
-    CREATE INDEX IF NOT EXISTS idx_leads_user_id ON leads(user_id);
-    CREATE INDEX IF NOT EXISTS idx_events_type   ON events(type);
-    CREATE INDEX IF NOT EXISTS idx_events_lead   ON events(lead_id);
-    CREATE INDEX IF NOT EXISTS idx_events_site   ON events(site_id);
-    CREATE INDEX IF NOT EXISTS idx_events_ts     ON events(created_at);
   `);
-  logger.info('Migrations exécutées');
+
+  // Index de performance
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_sites_slug ON sites(slug);
+    CREATE INDEX IF NOT EXISTS idx_events_site_id ON events(site_id);
+    CREATE INDEX IF NOT EXISTS idx_leads_user_status ON leads(user_id, status);
+  `);
+  
+  logger.info('Migrations terminées avec succès');
 }
