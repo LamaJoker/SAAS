@@ -1,10 +1,9 @@
-# Serveur
+# --- EXISTANT ---
 PORT=3000
 NODE_ENV=development
 BASE_URL=http://localhost:3000
 LOG_LEVEL=info
 
-# IA
 AI_API_KEY=sk-...
 AI_MODEL=gpt-4o-mini
 AI_BASE_URL=https://api.openai.com/v1
@@ -12,25 +11,32 @@ AI_MOCK_MODE=true
 AI_MAX_TOKENS=1500
 AI_TEMPERATURE=0.7
 
-# Base de données
 DB_PATH=./data/saas.db
 OUTPUT_DIR=./output
 
-# Génération
 GEN_CONCURRENCY=3
 GEN_RETRY_ATTEMPTS=2
 GEN_RETRY_DELAY=1000
 GEN_TIMEOUT_MS=30000
 
-# Crédits
 CREDITS_DEFAULT=10
 CREDITS_PER_GEN=1
 
-# Rate limiting
 RATE_WINDOW_MS=900000
 RATE_MAX_REQUESTS=100
 RATE_GEN_WINDOW_MS=3600000
 RATE_GEN_MAX=20
 
-# Sécurité
 MAX_INPUT_LENGTH=200
+
+# --- NOUVEAU : SECURITÉ & DÉLIVRABILITÉ ---
+# Change cette clé en prod (min 32 caractères aléatoires)
+JWT_SECRET=fb839615965471b0689617637845f0d61234567890abcdef
+
+# Email & Branding
+SMTP_SENDER_NAME="Alex de AutoDemo"
+EMAIL_SEND_DELAY_MS=3000
+
+# Tracking & Analytics
+# Doit correspondre à l'URL publique de ton API pour le pixel de tracking
+TRACKING_BASE_URL=http://localhost:3000

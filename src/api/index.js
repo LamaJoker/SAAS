@@ -1,12 +1,16 @@
 import express from 'express';
 import { join, resolve } from 'path';
 import { existsSync } from 'fs';
-import { runMigrations } from '../db/database.js';
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import { runMigrations, getDb } from '../db/database.js';
 import { User } from '../db/models/User.js';
 import { Site } from '../db/models/Site.js';
 import leadsRouter from './routes/leads.js';
 import generateRouter from './routes/generate.js';
 import sitesRouter from './routes/sites.js';
+import dashboardRouter from './routes/dashboard.js';
+import resendRouter from './routes/resend.js';
 import { globalLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { validateSlug } from './middleware/validate.js';
@@ -15,105 +19,68 @@ import { logger } from '../utils/logger.js';
 import { config } from '../config/config.js';
 
 const app = express();
+const JWT_SECRET = process.env.JWT_SECRET;
 
 app.disable('x-powered-by');
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  next();
-});
-
 app.use(express.json({ limit: '10kb' }));
 app.use(globalLimiter);
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    logger.info(`${req.method} ${req.path}`, {
-      status: res.statusCode,
-      ms: Date.now() - start,
-      userId: req.userId,
-    });
-  });
-  next();
+// ── Public Routes ────────────────────────────────────────────────────────────
+
+// Login via Email
+app.post('/auth/login', (req, res, next) => {
+  const { email } = req.body;
+  if (!email?.includes('@')) return next(Errors.badRequest('Email requis'));
+  
+  let user = User.findByEmail(email.toLowerCase().trim());
+  if (!user) {
+    user = User.create({ email: email.toLowerCase().trim(), name: email.split('@')[0] });
+  }
+  
+  const token = jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ success: true, token, user });
 });
 
-app.get('/demos/:slug', validateSlug, (req, res, next) => {
-  const { slug } = req.params;
-  const site = Site.findBySlug(slug);
-  if (!site) return next(Errors.notFound('Site introuvable'));
-
-  const outputRoot = resolve(config.paths.output);
-  const filePath = resolve(join(outputRoot, slug, 'index.html'));
-
-  if (!filePath.startsWith(outputRoot)) {
-    return next(Errors.forbidden('Accès interdit'));
-  }
-
-  if (!existsSync(filePath)) {
-    logger.warn('Fichier site manquant', { slug, filePath });
-    return next(Errors.notFound('Fichier de site introuvable'));
-  }
-
-  try {
+// Pixel de tracking (Appelé par les sites démo)
+app.get('/t/:slug', (req, res) => {
+  const site = Site.findBySlug(req.params.slug);
+  if (site) {
     Site.incrementViews(site.id);
-  } catch (err) {
-    logger.warn('Impossible d\'incrémenter les vues', { siteId: site.id });
+    getDb().prepare("INSERT INTO events (id, type, site_id, meta) VALUES (?, 'view', ?, ?)")
+      .run(crypto.randomUUID(), site.id, JSON.stringify({ ua: req.headers['user-agent'] }));
   }
-
-  res.setHeader('Cache-Control', 'public, max-age=300');
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.sendFile(filePath);
+  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.writeHead(200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store' }).end(pixel);
 });
 
-app.post('/users', async (req, res, next) => {
+// Désabonnement
+app.get('/unsubscribe/:token', (req, res) => {
+  const email = Buffer.from(req.params.token, 'base64').toString();
+  getDb().prepare("UPDATE users SET unsubscribed = 1 WHERE email = ?").run(email);
+  res.send('<html><body><h1>Désinscrit avec succès.</h1></body></html>');
+});
+
+// Middleware d'authentification JWT
+const auth = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return next(Errors.unauthorized());
   try {
-    const { email, name } = req.body;
-    if (!email || typeof email !== 'string' || !email.includes('@')) {
-      return next(Errors.badRequest('Email invalide'));
-    }
-    const existing = User.findByEmail(email.trim().toLowerCase());
-    if (existing) return next(Errors.conflict('Email déjà utilisé'));
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.userId = decoded.sub;
+    next();
+  } catch { next(Errors.unauthorized()); }
+};
 
-    const user = User.create({ email: email.trim().toLowerCase(), name });
-    res.status(201).json({ success: true, data: user });
-  } catch (err) {
-    next(err);
-  }
-});
+// ── Protected Routes ──────────────────────────────────────────────────────────
 
-app.use((req, res, next) => {
-  const userId = req.headers['x-user-id'];
-  if (!userId) return next(Errors.unauthorized('x-user-id header requis'));
+app.use('/leads', auth, leadsRouter);
+app.use('/generate', auth, generateRouter);
+app.use('/sites', auth, sitesRouter);
+app.use('/dashboard', auth, dashboardRouter);
 
-  const user = User.findById(userId);
-  if (!user) return next(Errors.unauthorized('Utilisateur inconnu'));
-
-  req.userId = userId;
-  req.user = user;
-  next();
-});
-
-app.use('/leads', leadsRouter);
-app.use('/generate', generateRouter);
-app.use('/sites', sitesRouter);
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', env: config.server.env, ts: new Date().toISOString() });
-});
-
-app.use((req, res, next) => next(Errors.notFound('Route introuvable')));
 app.use(errorHandler);
 
 export function startServer() {
   runMigrations();
-  app.listen(config.server.port, () => {
-    logger.info(`Serveur démarré`, {
-      port: config.server.port,
-      env: config.server.env,
-      baseUrl: config.server.baseUrl,
-    });
-  });
+  app.listen(config.server.port, () => logger.info(`Serveur OK sur port ${config.server.port}`));
 }
-
-export default app;
