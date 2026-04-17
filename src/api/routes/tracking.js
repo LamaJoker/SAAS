@@ -1,194 +1,154 @@
 /**
- * routes/tracking.js — Tracking email opens & clicks
+ * routes/tracking.js — Endpoints de tracking email
  *
- * GET /track/open/:token.gif  → pixel 1x1 transparent, enregistre l'ouverture
- * GET /track/click/:token     → redirect vers URL cible, enregistre le clic
- *
- * Intégrer dans src/api/index.js :
- *   import trackingRouter from './routes/tracking.js';
- *   app.use('/track', trackingRouter);
+ * GET /track/open/:token  → Pixel 1x1, enregistre ouverture
+ * GET /track/click/:token → Redirige vers URL cible, enregistre clic
  */
 
 import express from 'express';
 import { getDb } from '../../db/database.js';
 import { logger } from '../../utils/logger.js';
+import { randomBytes } from 'crypto';
 
 const router = express.Router();
 
-// Pixel GIF 1x1 transparent (bytes réels — pas de dépendance externe)
-const PIXEL = Buffer.from(
+// Pixel GIF 1x1 transparent (base64)
+const PIXEL_GIF = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   'base64'
 );
 
-function decodeToken(token) {
-  try {
-    return Buffer.from(token.replace(/\.gif$/, ''), 'base64url').toString('utf-8');
-  } catch {
-    return null;
-  }
-}
-
-function updateSendField(db, sendId, field) {
-  const now = new Date().toISOString();
-  const changes = db.prepare(`
-    UPDATE email_sends SET ${field} = ? WHERE id = ? AND ${field} IS NULL
-  `).run(now, sendId).changes;
-
-  if (changes > 0) {
-    // Incrémenter stats variante
-    const row = db.prepare('SELECT variant_id FROM email_sends WHERE id = ?').get(sendId);
-    if (row && field === 'opened_at') {
-      db.prepare(`
-        INSERT INTO variant_stats (variant_id, opens) VALUES (?, 1)
-        ON CONFLICT(variant_id) DO UPDATE SET opens = opens + 1, updated_at = datetime('now')
-      `).run(row.variant_id);
-    }
-    if (row && field === 'clicked_at') {
-      db.prepare(`
-        INSERT INTO variant_stats (variant_id, clicks) VALUES (?, 1)
-        ON CONFLICT(variant_id) DO UPDATE SET clicks = clicks + 1, updated_at = datetime('now')
-      `).run(row.variant_id);
-    }
-  }
-  return changes > 0;
-}
-
-function flagHotLead(db, sendId) {
-  // Si ouverture ET clic → lead chaud → mettre à jour le lead
-  const send = db.prepare(`
-    SELECT site_id, opened_at, clicked_at FROM email_sends WHERE id = ?
-  `).get(sendId);
-
-  if (!send || !send.opened_at || !send.clicked_at) return;
-
-  // Récupérer le lead_id via le site
-  const site = db.prepare('SELECT lead_id FROM sites WHERE id = ?').get(send.site_id);
-  if (!site) return;
-
-  // Marquer le lead comme "chaud" (ajouter colonne si besoin)
-  try {
-    db.prepare(`UPDATE leads SET status = 'hot' WHERE id = ? AND status = 'done'`).run(site.lead_id);
-    logger.info('[Tracking] Hot lead flagged', { leadId: site.lead_id, sendId });
-  } catch {
-    // Colonne hot peut ne pas exister selon schema — non bloquant
-  }
-}
-
-// ── GET /track/open/:token(.gif) ──────────────────────────────────────────────
-
+// ─── Open pixel ───────────────────────────────────────────────────────────────
 router.get('/open/:token', (req, res) => {
-  // Toujours répondre avec le pixel, même en cas d'erreur
-  res.setHeader('Content-Type', 'image/gif');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.end(PIXEL);
+  // Répondre immédiatement (ne pas bloquer sur l'écriture DB)
+  res.set({
+    'Content-Type':  'image/gif',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma':        'no-cache',
+    'Expires':       '0',
+  });
+  res.end(PIXEL_GIF);
 
-  // Traitement asynchrone (ne bloque pas la réponse)
-  const sendId = decodeToken(req.params.token);
-  if (!sendId) return;
+  // Enregistrement asynchrone
+  setImmediate(() => {
+    try {
+      const { token }   = req.params;
+      const ip          = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+      const userAgent   = req.headers['user-agent'] || '';
 
-  try {
-    const db = getDb();
-    const updated = updateSendField(db, sendId, 'opened_at');
-    if (updated) {
-      logger.info('[Tracking] Open recorded', {
-        sendId,
-        ip: req.ip,
-        ua: req.get('user-agent')?.slice(0, 100),
-      });
-      flagHotLead(db, sendId);
+      // Ignorer les bots connus
+      if (/bot|crawler|spider|preview|prefetch/i.test(userAgent)) return;
+
+      const db = getDb();
+      const parent = db.prepare(
+        'SELECT site_id, lead_id, variant FROM email_events WHERE token = ? LIMIT 1'
+      ).get(token);
+
+      if (!parent) return;
+
+      // Déduplique : pas 2 ouvertures en moins de 5 minutes du même IP
+      const recent = db.prepare(`
+        SELECT id FROM email_events
+        WHERE token = ? AND event_type = 'open' AND ip = ?
+          AND created_at >= datetime('now', '-5 minutes')
+        LIMIT 1
+      `).get(token, ip);
+
+      if (recent) return;
+
+      const id = randomBytes(8).toString('hex');
+      db.prepare(`
+        INSERT INTO email_events (id, token, site_id, lead_id, variant, event_type, ip, user_agent)
+        VALUES (?, ?, ?, ?, ?, 'open', ?, ?)
+      `).run(id, token + '_open_' + Date.now(), parent.site_id, parent.lead_id, parent.variant, ip, userAgent);
+
+      logger.debug(`[Tracking] Open: lead=${parent.lead_id} variant=${parent.variant}`);
+    } catch (err) {
+      logger.error('[Tracking] Open error:', err.message);
     }
-  } catch (err) {
-    logger.error('[Tracking] Open error', { error: err.message, sendId });
-  }
+  });
 });
 
-// ── GET /track/click/:token ────────────────────────────────────────────────────
+// ─── Click redirect ───────────────────────────────────────────────────────────
+router.get('/click/:clickToken', (req, res) => {
+  const { clickToken } = req.params;
+  const ip             = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+  const userAgent      = req.headers['user-agent'] || '';
 
-router.get('/click/:token', (req, res) => {
-  const sendId    = decodeToken(req.params.token);
-  const targetUrl = req.query.url;
+  const db = getDb();
+  const registered = db.prepare(
+    "SELECT site_id, lead_id, variant, url FROM email_events WHERE token = ? AND event_type = 'click_registered' LIMIT 1"
+  ).get(clickToken);
 
-  // Validation URL cible
-  let safeUrl = targetUrl;
-  try {
-    const parsed = new URL(targetUrl);
-    // Whitelist domaines autorisés (évite SSRF / open redirect)
-    const allowed = process.env.ALLOWED_REDIRECT_DOMAINS?.split(',') || [];
-    const baseHost = new URL(process.env.BASE_URL || 'http://localhost:3000').hostname;
-    allowed.push(baseHost);
-    if (!allowed.some(d => parsed.hostname === d || parsed.hostname.endsWith('.' + d))) {
-      logger.warn('[Tracking] Redirect blocked (domain not allowed)', { targetUrl, sendId });
-      return res.redirect(302, process.env.BASE_URL || '/');
-    }
-  } catch {
-    safeUrl = process.env.BASE_URL || '/';
+  if (!registered?.url) {
+    return res.redirect(302, process.env.BASE_URL || 'http://localhost:3000');
   }
 
-  res.redirect(302, safeUrl);
-
-  // Tracking asynchrone
-  if (!sendId) return;
-
-  try {
-    const db      = getDb();
-    const updated = updateSendField(db, sendId, 'clicked_at');
-    if (updated) {
-      logger.info('[Tracking] Click recorded', {
-        sendId,
-        ip: req.ip,
-        ua: req.get('user-agent')?.slice(0, 100),
-        targetUrl: safeUrl,
-      });
-      flagHotLead(db, sendId);
+  // Enregistrer le clic
+  setImmediate(() => {
+    try {
+      const id = randomBytes(8).toString('hex');
+      db.prepare(`
+        INSERT INTO email_events (id, token, site_id, lead_id, variant, event_type, url, ip, user_agent)
+        VALUES (?, ?, ?, ?, ?, 'click', ?, ?, ?)
+      `).run(
+        id,
+        clickToken + '_click_' + Date.now(),
+        registered.site_id,
+        registered.lead_id,
+        registered.variant,
+        registered.url,
+        ip,
+        userAgent
+      );
+      logger.debug(`[Tracking] Click: lead=${registered.lead_id} variant=${registered.variant}`);
+    } catch (err) {
+      logger.error('[Tracking] Click error:', err.message);
     }
-  } catch (err) {
-    logger.error('[Tracking] Click error', { error: err.message, sendId });
-  }
+  });
+
+  res.redirect(302, registered.url);
 });
 
-// ── GET /track/stats (interne, protégé par auth) ──────────────────────────────
-
+// ─── Analytics endpoint ───────────────────────────────────────────────────────
 router.get('/stats', (req, res, next) => {
   try {
-    const db = getDb();
+    const days = Math.min(90, parseInt(req.query.days || '30'));
+    const db   = getDb();
 
-    const overall = db.prepare(`
+    const summary = db.prepare(`
       SELECT
-        COUNT(*)           AS total_sent,
-        COUNT(opened_at)   AS total_opens,
-        COUNT(clicked_at)  AS total_clicks,
-        ROUND(COUNT(opened_at)  * 100.0 / COUNT(*), 1) AS open_rate,
-        ROUND(COUNT(clicked_at) * 100.0 / COUNT(*), 1) AS click_rate
-      FROM email_sends
+        SUM(event_type = 'sent')  as sent,
+        SUM(event_type = 'open')  as opens,
+        SUM(event_type = 'click') as clicks
+      FROM email_events
+      WHERE created_at >= datetime('now', '-${days} days')
     `).get();
 
     const byVariant = db.prepare(`
-      SELECT
-        variant_id,
-        COUNT(*)           AS sends,
-        COUNT(opened_at)   AS opens,
-        COUNT(clicked_at)  AS clicks,
-        ROUND(COUNT(opened_at)  * 100.0 / COUNT(*), 1) AS open_rate,
-        ROUND(COUNT(clicked_at) * 100.0 / COUNT(*), 1) AS click_rate
-      FROM email_sends
-      GROUP BY variant_id
-      ORDER BY click_rate DESC
+      SELECT variant,
+             SUM(event_type = 'sent')  as sent,
+             SUM(event_type = 'open')  as opens,
+             SUM(event_type = 'click') as clicks,
+             ROUND(100.0 * SUM(event_type = 'open')  / NULLIF(SUM(event_type = 'sent'), 0), 1) as open_rate,
+             ROUND(100.0 * SUM(event_type = 'click') / NULLIF(SUM(event_type = 'sent'), 0), 1) as click_rate
+      FROM email_events
+      WHERE created_at >= datetime('now', '-${days} days')
+        AND variant IS NOT NULL
+      GROUP BY variant
+      ORDER BY opens DESC
     `).all();
 
-    const hotLeads = db.prepare(`
-      SELECT
-        s.lead_name, s.city, s.url, s.lead_email,
-        e.created_at AS sent_at, e.opened_at, e.clicked_at, e.variant_id
-      FROM email_sends e
-      JOIN sites s ON s.id = e.site_id
-      WHERE e.opened_at IS NOT NULL AND e.clicked_at IS NOT NULL
-      ORDER BY e.clicked_at DESC
-      LIMIT 20
-    `).all();
-
-    res.json({ success: true, data: { overall, byVariant, hotLeads } });
+    res.json({
+      success: true,
+      data: {
+        period_days: days,
+        ...summary,
+        open_rate:   summary.sent > 0 ? Math.round(summary.opens  / summary.sent * 10000) / 100 : 0,
+        click_rate:  summary.sent > 0 ? Math.round(summary.clicks / summary.sent * 10000) / 100 : 0,
+        by_variant:  byVariant,
+      },
+    });
   } catch (err) {
     next(err);
   }
