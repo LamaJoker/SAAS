@@ -1,4 +1,4 @@
-import { getDb } from '../database.js';
+import { getDb }     from '../database.js';
 import { randomUUID } from 'crypto';
 
 export const Lead = {
@@ -17,16 +17,16 @@ export const Lead = {
   },
 
   findAllByUser(userId) {
-    return getDb().prepare(`
-      SELECT * FROM leads
-      WHERE user_id = ?
-      ORDER BY created_at DESC
-    `).all(userId);
+    return getDb().prepare(
+      'SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC'
+    ).all(userId);
   },
 
   updateStatus(id, status) {
-    getDb().prepare(`
-      UPDATE leads SET status = ? WHERE id = ?
-    `).run(status, id);
+    getDb().prepare('UPDATE leads SET status = ? WHERE id = ?').run(status, id);
+  },
+
+  deleteById(id) {
+    getDb().prepare('DELETE FROM leads WHERE id = ?').run(id);
   },
 };

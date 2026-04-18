@@ -1,79 +1,58 @@
-/**
- * routes/tracking.js — Endpoints de tracking email
- *
- * GET /track/open/:token  → Pixel 1x1, enregistre ouverture
- * GET /track/click/:token → Redirige vers URL cible, enregistre clic
- */
-
 import express from 'express';
-import { getDb } from '../../db/database.js';
+import { getDb }  from '../../db/database.js';
 import { logger } from '../../utils/logger.js';
 import { randomBytes } from 'crypto';
 
 const router = express.Router();
 
-// Pixel GIF 1x1 transparent (base64)
 const PIXEL_GIF = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   'base64'
 );
 
-// ─── Open pixel ───────────────────────────────────────────────────────────────
+const BOT_RE = /bot|crawler|spider|preview|prefetch|slack|telegram|whatsapp|facebook/i;
+
 router.get('/open/:token', (req, res) => {
-  // Répondre immédiatement (ne pas bloquer sur l'écriture DB)
   res.set({
-    'Content-Type':  'image/gif',
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma':        'no-cache',
-    'Expires':       '0',
+    'Content-Type':   'image/gif',
+    'Cache-Control':  'no-cache, no-store, must-revalidate',
+    'Pragma':         'no-cache',
+    'Expires':        '0',
   });
   res.end(PIXEL_GIF);
 
-  // Enregistrement asynchrone
   setImmediate(() => {
     try {
-      const { token }   = req.params;
-      const ip          = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
-      const userAgent   = req.headers['user-agent'] || '';
+      const ua = req.headers['user-agent'] || '';
+      if (BOT_RE.test(ua)) return;
 
-      // Ignorer les bots connus
-      if (/bot|crawler|spider|preview|prefetch/i.test(userAgent)) return;
-
-      const db = getDb();
-      const parent = db.prepare(
-        'SELECT site_id, lead_id, variant FROM email_events WHERE token = ? LIMIT 1'
-      ).get(token);
-
+      const db     = getDb();
+      const token  = req.params.token;
+      const ip     = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+      const parent = db.prepare('SELECT site_id, lead_id, variant FROM email_events WHERE token = ? LIMIT 1').get(token);
       if (!parent) return;
 
-      // Déduplique : pas 2 ouvertures en moins de 5 minutes du même IP
       const recent = db.prepare(`
         SELECT id FROM email_events
         WHERE token = ? AND event_type = 'open' AND ip = ?
-          AND created_at >= datetime('now', '-5 minutes')
-        LIMIT 1
+          AND created_at >= datetime('now', '-5 minutes') LIMIT 1
       `).get(token, ip);
-
       if (recent) return;
 
-      const id = randomBytes(8).toString('hex');
       db.prepare(`
         INSERT INTO email_events (id, token, site_id, lead_id, variant, event_type, ip, user_agent)
-        VALUES (?, ?, ?, ?, ?, 'open', ?, ?)
-      `).run(id, token + '_open_' + Date.now(), parent.site_id, parent.lead_id, parent.variant, ip, userAgent);
-
-      logger.debug(`[Tracking] Open: lead=${parent.lead_id} variant=${parent.variant}`);
+        VALUES (?,?,?,?,?,'open',?,?)
+      `).run(randomBytes(8).toString('hex'), `${token}_open_${Date.now()}`, parent.site_id, parent.lead_id, parent.variant, ip, ua);
     } catch (err) {
-      logger.error('[Tracking] Open error:', err.message);
+      logger.error('[Tracking] Open error', { error: err.message });
     }
   });
 });
 
-// ─── Click redirect ───────────────────────────────────────────────────────────
 router.get('/click/:clickToken', (req, res) => {
   const { clickToken } = req.params;
-  const ip             = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
-  const userAgent      = req.headers['user-agent'] || '';
+  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+  const ua = req.headers['user-agent'] || '';
 
   const db = getDb();
   const registered = db.prepare(
@@ -84,34 +63,30 @@ router.get('/click/:clickToken', (req, res) => {
     return res.redirect(302, process.env.BASE_URL || 'http://localhost:3000');
   }
 
-  // Enregistrer le clic
   setImmediate(() => {
     try {
-      const id = randomBytes(8).toString('hex');
       db.prepare(`
         INSERT INTO email_events (id, token, site_id, lead_id, variant, event_type, url, ip, user_agent)
-        VALUES (?, ?, ?, ?, ?, 'click', ?, ?, ?)
+        VALUES (?,?,?,?,?,'click',?,?,?)
       `).run(
-        id,
-        clickToken + '_click_' + Date.now(),
+        randomBytes(8).toString('hex'),
+        `${clickToken}_click_${Date.now()}`,
         registered.site_id,
         registered.lead_id,
         registered.variant,
         registered.url,
         ip,
-        userAgent
+        ua
       );
-      logger.debug(`[Tracking] Click: lead=${registered.lead_id} variant=${registered.variant}`);
     } catch (err) {
-      logger.error('[Tracking] Click error:', err.message);
+      logger.error('[Tracking] Click error', { error: err.message });
     }
   });
 
   res.redirect(302, registered.url);
 });
 
-// ─── Analytics endpoint ───────────────────────────────────────────────────────
-router.get('/stats', (req, res, next) => {
+router.get('/stats', async (req, res, next) => {
   try {
     const days = Math.min(90, parseInt(req.query.days || '30'));
     const db   = getDb();
@@ -129,24 +104,23 @@ router.get('/stats', (req, res, next) => {
       SELECT variant,
              SUM(event_type = 'sent')  as sent,
              SUM(event_type = 'open')  as opens,
-             SUM(event_type = 'click') as clicks,
-             ROUND(100.0 * SUM(event_type = 'open')  / NULLIF(SUM(event_type = 'sent'), 0), 1) as open_rate,
-             ROUND(100.0 * SUM(event_type = 'click') / NULLIF(SUM(event_type = 'sent'), 0), 1) as click_rate
+             SUM(event_type = 'click') as clicks
       FROM email_events
-      WHERE created_at >= datetime('now', '-${days} days')
-        AND variant IS NOT NULL
-      GROUP BY variant
-      ORDER BY opens DESC
+      WHERE created_at >= datetime('now', '-${days} days') AND variant IS NOT NULL
+      GROUP BY variant ORDER BY opens DESC
     `).all();
 
+    const sent = summary.sent || 0;
     res.json({
       success: true,
       data: {
-        period_days: days,
-        ...summary,
-        open_rate:   summary.sent > 0 ? Math.round(summary.opens  / summary.sent * 10000) / 100 : 0,
-        click_rate:  summary.sent > 0 ? Math.round(summary.clicks / summary.sent * 10000) / 100 : 0,
-        by_variant:  byVariant,
+        period_days:  days,
+        sent,
+        opens:        summary.opens   || 0,
+        clicks:       summary.clicks  || 0,
+        open_rate:    sent > 0 ? Math.round((summary.opens  / sent) * 10000) / 100 : 0,
+        click_rate:   sent > 0 ? Math.round((summary.clicks / sent) * 10000) / 100 : 0,
+        by_variant:   byVariant,
       },
     });
   } catch (err) {

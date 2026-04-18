@@ -1,11 +1,11 @@
-import { Errors } from '../../utils/AppError.js';
+import { Errors }        from '../../utils/AppError.js';
 import { sanitizeInput } from '../../utils/utils.js';
-import { config } from '../../config/config.js';
+import { config }        from '../../config/config.js';
 
 function isValidText(str) {
   if (!str || typeof str !== 'string') return false;
-  const trimmed = str.trim();
-  return trimmed.length > 0 && trimmed.length <= config.security.maxInputLength;
+  const t = str.trim();
+  return t.length > 0 && t.length <= config.security.maxInputLength;
 }
 
 export function validateLead(req, res, next) {
@@ -16,9 +16,7 @@ export function validateLead(req, res, next) {
   if (!isValidText(activity)) errors.push('activity requis (1-200 chars)');
   if (!isValidText(city))     errors.push('city requis (1-200 chars)');
 
-  if (errors.length) {
-    return next(Errors.badRequest(errors.join(', ')));
-  }
+  if (errors.length) return next(Errors.badRequest(errors.join(', ')));
 
   req.body.name     = sanitizeInput(name);
   req.body.activity = sanitizeInput(activity);

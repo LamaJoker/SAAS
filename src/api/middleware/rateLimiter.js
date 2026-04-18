@@ -27,8 +27,8 @@ function createLimiter({ windowMs, max, message, keyFn }) {
     if (entry.count > max) {
       return res.status(429).json({
         success: false,
-        error: message || 'Trop de requêtes, réessayez plus tard',
-        code: 'RATE_LIMITED',
+        error:   message || 'Trop de requêtes, réessayez plus tard',
+        code:    'RATE_LIMITED',
         retryAfter: Math.ceil((entry.resetAt - now) / 1000),
       });
     }
@@ -38,13 +38,13 @@ function createLimiter({ windowMs, max, message, keyFn }) {
 
 export const globalLimiter = createLimiter({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
-  message: 'Limite de requêtes atteinte',
+  max:      config.rateLimit.maxRequests,
+  message:  'Limite de requêtes atteinte',
 });
 
 export const generateLimiter = createLimiter({
   windowMs: config.rateLimit.generateWindowMs,
-  max: config.rateLimit.generateMax,
-  message: `Maximum ${config.rateLimit.generateMax} générations par heure`,
-  keyFn: (req) => req.userId,
+  max:      config.rateLimit.generateMax,
+  message:  `Maximum ${config.rateLimit.generateMax} générations par heure`,
+  keyFn:    req => req.userId,
 });

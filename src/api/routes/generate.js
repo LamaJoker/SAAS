@@ -1,7 +1,7 @@
 import express from 'express';
 import { generateSiteForLead } from '../../services/siteService.js';
-import { generateLimiter } from '../middleware/rateLimiter.js';
-import { validateGenerate } from '../middleware/validate.js';
+import { generateLimiter }     from '../middleware/rateLimiter.js';
+import { validateGenerate }    from '../middleware/validate.js';
 
 const router = express.Router();
 

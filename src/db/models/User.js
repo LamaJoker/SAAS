@@ -1,6 +1,6 @@
-import { getDb } from '../database.js';
+import { getDb }     from '../database.js';
 import { randomUUID } from 'crypto';
-import { config } from '../../config/config.js';
+import { config }     from '../../config/config.js';
 
 export const User = {
   create({ email, name }) {
@@ -21,23 +21,15 @@ export const User = {
     return getDb().prepare('SELECT * FROM users WHERE email = ?').get(email);
   },
 
-  /**
-   * Déduit des crédits de manière atomique.
-   * Retourne false si crédits insuffisants.
-   */
   deductCredits(userId, amount) {
-    const db = getDb();
-    const result = db.prepare(`
-      UPDATE users
-      SET credits = credits - ?
+    const result = getDb().prepare(`
+      UPDATE users SET credits = credits - ?
       WHERE id = ? AND credits >= ?
     `).run(amount, userId, amount);
     return result.changes > 0;
   },
 
   addCredits(userId, amount) {
-    getDb().prepare(`
-      UPDATE users SET credits = credits + ? WHERE id = ?
-    `).run(amount, userId);
+    getDb().prepare('UPDATE users SET credits = credits + ? WHERE id = ?').run(amount, userId);
   },
 };
