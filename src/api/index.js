@@ -16,6 +16,7 @@ import resendRoutes      from './routes/resend.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
 import demosRoutes       from './routes/demos.js';
 import healthRoutes      from './routes/health.js';
+import quickDemoRoutes   from './routes/quickDemo.js';
 
 import { config } from '../config/config.js';
 
@@ -55,6 +56,7 @@ export function createApp() {
   app.use('/analytics',  authenticate, analyticsRoutes);
   app.use('/resend',     authenticate, resendRoutes);
   app.use('/queue',      authenticate, queueRoutes);
+  app.use('/quick-demo', authenticate, quickDemoRoutes);
 
   app.use(errorHandler);
 

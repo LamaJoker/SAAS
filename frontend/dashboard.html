@@ -305,6 +305,12 @@
         </div>
       </div>
       <div class="nav-group">
+        <div class="nav-label">Démo express</div>
+        <div class="nav-item" data-tab="quick">
+          <span class="nav-icon">⚡</span> Envoyer une démo
+        </div>
+      </div>
+      <div class="nav-group">
         <div class="nav-label">Gestion</div>
         <div class="nav-item" data-tab="leads">
           <span class="nav-icon">👥</span> Leads
@@ -440,6 +446,78 @@
         <div id="sitesGrid" class="sites-grid hidden"></div>
       </div>
 
+      <!-- ════════════════ QUICK DEMO ════════════════ -->
+      <div id="panel-quick" class="panel">
+        <div class="panel-header">
+          <div class="panel-title">⚡ Démo express</div>
+        </div>
+        <p class="help-text" style="max-width:680px;margin-bottom:16px">
+          Saisissez les infos du prospect (et son email une fois trouvé). Le site démo est généré
+          puis envoyé directement avec le template choisi. <strong>Coût : 1 crédit.</strong>
+        </p>
+        <form id="quickDemoForm" class="form-card">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nom / Entreprise *</label>
+              <input type="text" id="qdName" placeholder="Plomberie Dupont" required maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label>Activité *</label>
+              <input type="text" id="qdActivity" placeholder="Plombier, Électricien…" required maxlength="200" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Ville *</label>
+              <input type="text" id="qdCity" placeholder="Lyon" required maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label>Téléphone (optionnel)</label>
+              <input type="tel" id="qdPhone" placeholder="06 12 34 56 78" maxlength="30" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Email du prospect</label>
+              <input type="email" id="qdEmail" placeholder="contact@exemple.com" maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label>Template d'email</label>
+              <select id="qdVariant" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;padding:9px 12px;font-family:var(--font);outline:none">
+                <option value="">Auto (selon historique)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+            <input type="checkbox" id="qdSend" checked style="width:auto" />
+            <label for="qdSend" style="font-size:13px;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500">
+              Envoyer l'email tout de suite après génération
+            </label>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button type="submit" class="btn btn-primary" id="qdBtn">⚡ Générer + Envoyer (1 crédit)</button>
+          </div>
+          <p id="qdMsg" class="form-msg hidden"></p>
+        </form>
+
+        <div id="qdResult" class="card hidden" style="margin-top:20px;max-width:680px">
+          <div class="card-header">
+            <div class="card-title">✅ Démo prête</div>
+          </div>
+          <div class="card-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+            <div>
+              <div style="font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Lien public</div>
+              <div class="site-card-url">
+                <input type="text" id="qdResultUrl" readonly onclick="this.select()" />
+                <button class="btn btn-ghost btn-xs" id="qdCopyBtn">📋</button>
+                <a id="qdOpenBtn" target="_blank" class="btn btn-primary btn-xs">Voir ↗</a>
+              </div>
+            </div>
+            <div id="qdEmailStatus" style="font-size:13px"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════════════ ADD LEAD ════════════════ -->
       <div id="panel-add" class="panel">
         <div class="panel-header">
@@ -514,6 +592,12 @@
     <div class="modal">
       <h3>📧 Relancer par email</h3>
       <p id="resendModalInfo"></p>
+      <div style="margin:14px 0 4px">
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px">Template</label>
+        <select id="resendVariant" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;padding:9px 12px;font-family:var(--font);outline:none">
+          <option value="">Auto (selon historique)</option>
+        </select>
+      </div>
       <div id="resendModalLoading" class="modal-loading hidden">
         <div class="spinner"></div>
         <p style="font-size:13px;color:var(--muted)">Envoi en cours…</p>
@@ -584,6 +668,7 @@
       if (name === 'overview') loadOverview();
       if (name === 'leads')    loadLeads();
       if (name === 'sites')    loadSites();
+      if (name === 'quick')    loadEmailTemplates();
     }
 
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -923,11 +1008,15 @@
       const actions = document.getElementById('resendModalActions');
       const loading = document.getElementById('resendModalLoading');
       const errEl   = document.getElementById('resendModalError');
+      const variantId = document.getElementById('resendVariant').value || null;
       actions.classList.add('hidden');
       loading.classList.remove('hidden');
       errEl.classList.add('hidden');
       try {
-        await apiFetch(`/resend/${pendingSiteId}`, { method: 'POST' });
+        await apiFetch(`/resend/${pendingSiteId}`, {
+          method: 'POST',
+          body: JSON.stringify(variantId ? { variantId } : {}),
+        });
         document.getElementById('resendModal').classList.add('hidden');
         showToast('✉️ Email envoyé !', 'success');
       } catch (err) {
@@ -935,6 +1024,104 @@
         actions.classList.remove('hidden');
         errEl.textContent = err.message;
         errEl.classList.remove('hidden');
+      }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // EMAIL TEMPLATES
+    // ─────────────────────────────────────────────────────────────────────────
+
+    let _templatesLoaded = false;
+    async function loadEmailTemplates() {
+      if (_templatesLoaded) return;
+      try {
+        const tpls = await apiFetch('/quick-demo/templates');
+        const targets = [
+          document.getElementById('qdVariant'),
+          document.getElementById('resendVariant'),
+        ];
+        for (const sel of targets) {
+          if (!sel) continue;
+          for (const t of tpls) {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.label;
+            sel.appendChild(opt);
+          }
+        }
+        _templatesLoaded = true;
+      } catch (err) {
+        console.warn('Templates non chargés:', err.message);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // QUICK DEMO
+    // ─────────────────────────────────────────────────────────────────────────
+
+    document.getElementById('qdCopyBtn').addEventListener('click', () => {
+      const url = document.getElementById('qdResultUrl').value;
+      if (url) copyToClipboard(url);
+    });
+
+    document.getElementById('quickDemoForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn    = document.getElementById('qdBtn');
+      const msg    = document.getElementById('qdMsg');
+      const result = document.getElementById('qdResult');
+      const send   = document.getElementById('qdSend').checked;
+      const email  = document.getElementById('qdEmail').value.trim();
+
+      if (send && !email) {
+        msg.textContent = '⚠️ Email requis pour envoyer (ou décochez l\'envoi).';
+        msg.className = 'form-msg form-msg-error';
+        msg.classList.remove('hidden');
+        return;
+      }
+
+      const payload = {
+        name:      document.getElementById('qdName').value.trim(),
+        activity:  document.getElementById('qdActivity').value.trim(),
+        city:      document.getElementById('qdCity').value.trim(),
+        phone:     document.getElementById('qdPhone').value.trim() || undefined,
+        email:     email || undefined,
+        variantId: document.getElementById('qdVariant').value || undefined,
+        sendEmail: send,
+      };
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Génération…';
+      msg.classList.add('hidden');
+      result.classList.add('hidden');
+
+      try {
+        const data = await apiFetch('/quick-demo', { method: 'POST', body: JSON.stringify(payload) });
+
+        document.getElementById('qdResultUrl').value = data.site.url;
+        document.getElementById('qdOpenBtn').href    = data.site.url;
+
+        const status = data.email;
+        const statusEl = document.getElementById('qdEmailStatus');
+        if (status.sent) {
+          statusEl.innerHTML = `<span class="badge badge-green">✉️ Email envoyé</span> &nbsp; <span style="color:var(--muted)">template : ${esc(status.variant)}</span>`;
+        } else if (status.reason === 'not_requested') {
+          statusEl.innerHTML = `<span class="badge badge-muted">Email non envoyé (désactivé)</span>`;
+        } else {
+          statusEl.innerHTML = `<span class="badge badge-amber">Email non envoyé — ${esc(status.reason || 'inconnu')}</span>`;
+        }
+
+        result.classList.remove('hidden');
+        showToast('✅ Démo créée !', 'success');
+        document.getElementById('quickDemoForm').reset();
+        document.getElementById('qdSend').checked = true;
+        await loadCredits();
+      } catch (err) {
+        msg.textContent = '❌ ' + err.message;
+        msg.className = 'form-msg form-msg-error';
+        msg.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Générer + Envoyer (1 crédit)';
       }
     });
 
