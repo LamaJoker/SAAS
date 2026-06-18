@@ -2,6 +2,7 @@
 
 > Génère automatiquement des sites vitrines pour PME locales, puis les démarche par séquence email — de la prospection au paiement.
 
+[![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-112%20passing-brightgreen)](#-tests)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com)
