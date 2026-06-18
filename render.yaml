@@ -1,0 +1,41 @@
+# Render Blueprint — déploiement en un clic d'AutoDemo SaaS
+# Docs : https://render.com/docs/blueprint-spec
+#
+# Déploiement : https://dashboard.render.com → New → Blueprint → connecter ce repo.
+# Render lit ce fichier, construit l'image Docker et démarre le service.
+#
+# ⚠️ Plan gratuit : disque éphémère → la base SQLite se réinitialise à chaque
+# redéploiement/veille. Parfait pour une démo de portfolio. Pour persister les
+# données, passer à un plan payant et ajouter un bloc `disk:` (voir commentaire bas).
+
+services:
+  - type: web
+    name: autodemo-saas
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render génère un secret aléatoire sécurisé (≥32 caractères) au 1er déploiement
+      - key: JWT_SECRET
+        generateValue: true
+      # Mode démo : génère des sites sans clé IA. Mettre une vraie AI_API_KEY pour le mode réel.
+      - key: AI_MOCK_MODE
+        value: "true"
+      # À renseigner après le 1er déploiement avec l'URL Render (ex: https://autodemo-saas.onrender.com)
+      - key: BASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+
+# ── Persistance des données (plan payant uniquement) ────────────────────────
+# Décommenter pour conserver la base SQLite entre les déploiements :
+#
+#    disk:
+#      name: autodemo-data
+#      mountPath: /app/data
+#      sizeGB: 1
