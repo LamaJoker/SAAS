@@ -1,0 +1,24 @@
+# Déploiement sans Docker (Node installé sur la machine).
+#   sudo cp deploy/autodemo.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now autodemo
+#   journalctl -u autodemo -f         # logs en direct
+[Unit]
+Description=AutoDemo SaaS
+After=network.target
+
+[Service]
+Type=simple
+User=autodemo
+WorkingDirectory=/opt/autodemo
+EnvironmentFile=/opt/autodemo/.env
+ExecStart=/usr/bin/node src/main.js
+Restart=always
+RestartSec=3
+# Durcissement
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/autodemo/data /opt/autodemo/output /opt/autodemo/logs
+
+[Install]
+WantedBy=multi-user.target

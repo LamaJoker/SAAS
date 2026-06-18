@@ -1,0 +1,10 @@
+node_modules
+data
+output
+logs
+tests
+docs
+.env
+*.md
+.git
+.obsidian

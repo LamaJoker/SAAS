@@ -1,0 +1,22 @@
+# Secrets — ne jamais commiter
+.env
+env
+
+# Données & artefacts — ne jamais commiter de données réelles
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/backups/
+output/
+
+# Dépendances
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# Obsidian (notes locales)
+.obsidian/

@@ -1,0 +1,35 @@
+{
+  "name": "autodemo-saas",
+  "version": "1.0.0",
+  "description": "Génération automatique de sites vitrines + outreach email pour PME locales",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "dev": "node --watch src/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "migrate": "node -e \"import('./src/db/database.js').then(m => m.runMigrations())\"",
+    "migrate:pg": "node -e \"import('./src/db/pg.js').then(m => m.applyPgSchema()).then(() => process.exit(0))\"",
+    "backup": "node src/scripts/backup.js",
+    "worker:scrape": "node src/workers/standalone-scraper.js",
+    "make-admin": "node scripts/make-admin.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^8.0.11",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.14",
+    "supertest": "^7.2.2",
+    "vitest": "^2.1.0"
+  }
+}

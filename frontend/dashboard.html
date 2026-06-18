@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoDemo — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ─── RESET & VARS ───────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0c0d11;
+      --surface:    #13151c;
+      --surface2:   #1c1f2b;
+      --border:     #252836;
+      --text:       #e2e4f0;
+      --muted:      #6b7294;
+      --dim:        #3a3e55;
+      --primary:    #5b8cf5;
+      --primary-d:  #3d6fd4;
+      --green:      #34d399;
+      --green-dim:  rgba(52,211,153,.12);
+      --red:        #f87171;
+      --red-dim:    rgba(248,113,113,.12);
+      --amber:      #fbbf24;
+      --amber-dim:  rgba(251,191,36,.12);
+      --blue-dim:   rgba(91,140,245,.12);
+      --font:       'DM Sans', sans-serif;
+      --mono:       'DM Mono', monospace;
+      --radius:     10px;
+      --radius-lg:  16px;
+    }
+
+    html, body { height: 100%; font-family: var(--font); font-size: 14px; color: var(--text); background: var(--bg); line-height: 1.5; }
+
+    /* ─── TOPBAR ─────────────────────────────────────────────────────────────── */
+    .topbar {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 100;
+      background: rgba(12,13,17,.9); border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+    .brand-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; box-shadow: 0 0 8px var(--primary); }
+    .topbar-right { display: flex; align-items: center; gap: 16px; }
+    .user-chip {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 14px; font-size: 12px; color: var(--muted);
+    }
+    .credits-chip {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 14px; font-size: 12px; font-weight: 600;
+    }
+    .credits-chip.low { border-color: var(--red); color: var(--red); }
+    .credits-chip.mid { border-color: var(--amber); color: var(--amber); }
+
+    /* ─── LAYOUT ─────────────────────────────────────────────────────────────── */
+    .layout { display: flex; padding-top: 56px; height: 100vh; }
+
+    .sidebar {
+      width: 200px; min-width: 200px;
+      background: var(--surface); border-right: 1px solid var(--border);
+      padding: 20px 12px; overflow-y: auto;
+    }
+    .nav-group { margin-bottom: 24px; }
+    .nav-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); padding: 0 8px; margin-bottom: 6px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 10px; border-radius: var(--radius);
+      font-size: 13px; color: var(--muted); cursor: pointer;
+      transition: all .15s;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--blue-dim); color: var(--primary); font-weight: 600; }
+    .nav-icon { font-size: 15px; width: 20px; text-align: center; }
+
+    .content { flex: 1; overflow-y: auto; padding: 28px; }
+
+    /* ─── PANELS ─────────────────────────────────────────────────────────────── */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .panel-title { font-size: 20px; font-weight: 700; }
+    .panel-actions { display: flex; gap: 8px; }
+
+    /* ─── METRICS GRID ───────────────────────────────────────────────────────── */
+    .metrics-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px; margin-bottom: 28px;
+    }
+    .metric-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 20px;
+      position: relative; overflow: hidden;
+      transition: border-color .2s;
+    }
+    .metric-card:hover { border-color: var(--primary); }
+    .metric-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+    .metric-card.green::before { background: var(--green); }
+    .metric-card.blue::before  { background: var(--primary); }
+    .metric-card.amber::before { background: var(--amber); }
+    .metric-card.red::before   { background: var(--red); }
+
+    .metric-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
+    .metric-value { font-size: 32px; font-weight: 700; line-height: 1; font-family: var(--mono); }
+    .metric-value.green { color: var(--green); }
+    .metric-value.blue  { color: var(--primary); }
+    .metric-value.amber { color: var(--amber); }
+    .metric-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    /* ─── TWO COLUMNS ────────────────────────────────────────────────────────── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ─── CARD ───────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+    }
+    .card-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .card-body { padding: 0; }
+
+    /* ─── TABLE ──────────────────────────────────────────────────────────────── */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); padding: 10px 20px;
+      text-align: left; background: var(--surface2);
+    }
+    .data-table td { padding: 12px 20px; border-top: 1px solid var(--border); vertical-align: middle; }
+    .data-table tr:hover td { background: rgba(255,255,255,.02); }
+
+    /* ─── STATUS INDICATOR ───────────────────────────────────────────────────── */
+    .status-dot {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500;
+    }
+    .status-dot::before {
+      content: ''; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    }
+    .status-dot.active::before  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.idle::before    { background: var(--amber); }
+    .status-dot.inactive::before{ background: var(--red); }
+    .status-dot.active  { color: var(--green); }
+    .status-dot.idle    { color: var(--amber); }
+    .status-dot.inactive{ color: var(--red); }
+
+    /* ─── BADGE ──────────────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; padding: 2px 8px;
+      border-radius: 20px; font-size: 11px; font-weight: 600;
+    }
+    .badge-green  { background: var(--green-dim); color: var(--green); }
+    .badge-red    { background: var(--red-dim);   color: var(--red);   }
+    .badge-amber  { background: var(--amber-dim); color: var(--amber); }
+    .badge-blue   { background: var(--blue-dim);  color: var(--primary); }
+    .badge-muted  { background: var(--surface2);  color: var(--muted); }
+
+    /* ─── BUTTONS ────────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border: none; border-radius: var(--radius);
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: opacity .15s, transform .1s; white-space: nowrap; font-family: var(--font);
+    }
+    .btn:hover { opacity: .85; }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary  { background: var(--primary); color: #fff; }
+    .btn-ghost    { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-red      { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+    .btn-green    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(52,211,153,.3); }
+    .btn-xs       { padding: 5px 10px; font-size: 11px; }
+    .btn-sm       { padding: 6px 12px; font-size: 12px; }
+    .btn-full     { width: 100%; justify-content: center; }
+
+    /* ─── VIEWS BAR ──────────────────────────────────────────────────────────── */
+    .views-bar { display: flex; align-items: center; gap: 8px; }
+    .views-track { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+    .views-fill  { height: 100%; background: var(--primary); border-radius: 2px; transition: width .6s ease; }
+    .views-count { font-size: 12px; font-family: var(--mono); color: var(--muted); min-width: 28px; text-align: right; }
+
+    /* ─── ACTIVITY CHART ─────────────────────────────────────────────────────── */
+    .sparkline { display: flex; align-items: flex-end; gap: 4px; height: 40px; padding: 0 20px 16px; }
+    .spark-bar { flex: 1; background: var(--primary); border-radius: 3px 3px 0 0; opacity: .7; transition: opacity .2s; min-height: 3px; }
+    .spark-bar:hover { opacity: 1; }
+
+    /* ─── FORMS ──────────────────────────────────────────────────────────────── */
+    .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 680px; }
+    .form-row   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+    input[type="text"], input[type="email"], input[type="tel"], textarea {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); font-size: 13px; padding: 9px 12px; width: 100%; outline: none;
+      transition: border-color .15s; font-family: var(--font);
+    }
+    input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(91,140,245,.15); }
+    textarea { resize: vertical; }
+
+    .form-msg { font-size: 12px; padding: 8px 12px; border-radius: var(--radius); margin-top: 8px; }
+    .form-msg-success { background: var(--green-dim); color: var(--green); }
+    .form-msg-error   { background: var(--red-dim);   color: var(--red); }
+
+    /* ─── SITES GRID ─────────────────────────────────────────────────────────── */
+    .sites-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+    .site-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 18px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .site-card-top  { display: flex; justify-content: space-between; align-items: flex-start; }
+    .site-card-name { font-size: 15px; font-weight: 600; }
+    .site-card-meta { font-size: 12px; color: var(--muted); }
+    .site-card-url  { display: flex; gap: 6px; }
+    .site-card-url input {
+      font-size: 11px; padding: 5px 8px;
+      background: var(--bg); color: var(--muted);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      flex: 1; min-width: 0; font-family: var(--mono);
+    }
+    .site-card-actions { display: flex; gap: 6px; }
+
+    /* ─── EMPTY / LOADING ────────────────────────────────────────────────────── */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .empty-icon  { font-size: 36px; margin-bottom: 12px; display: block; }
+    .loading-state { text-align: center; padding: 40px; color: var(--muted); }
+
+    /* ─── MODAL ──────────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7);
+      display: flex; align-items: center; justify-content: center; z-index: 200;
+    }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 28px;
+      max-width: 420px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    }
+    .modal h3 { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+    .modal p  { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px 0; }
+    .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── TOAST ──────────────────────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      padding: 12px 20px; border-radius: var(--radius);
+      font-size: 13px; font-weight: 500; z-index: 999;
+      background: var(--surface2); color: var(--text);
+      border-left: 4px solid var(--primary);
+      box-shadow: 0 8px 32px rgba(0,0,0,.4);
+      transition: opacity .3s, transform .3s;
+    }
+    .toast.toast-success { border-color: var(--green); }
+    .toast.toast-error   { border-color: var(--red); }
+    .toast.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+
+    /* ─── BANNIÈRE VÉRIFICATION EMAIL ────────────────────────────────────────── */
+    .verify-banner {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--amber-dim); border-bottom: 1px solid rgba(251,191,36,.3);
+      color: var(--amber); font-size: 13px; padding: 10px 24px;
+      display: flex; align-items: center; gap: 12px; justify-content: center;
+    }
+
+    /* ─── ONBOARDING ─────────────────────────────────────────────────────────── */
+    .onboarding {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 32px; margin-bottom: 24px;
+    }
+    .onboarding h2 { font-size: 18px; margin-bottom: 6px; }
+    .onboarding > p { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+    .onb-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+    .onb-step {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px; cursor: pointer;
+      transition: border-color .15s;
+    }
+    .onb-step:hover { border-color: var(--primary); }
+    .onb-num {
+      width: 26px; height: 26px; border-radius: 50%; background: var(--blue-dim);
+      color: var(--primary); font-weight: 700; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; margin-bottom: 10px;
+    }
+    .onb-step h3 { font-size: 14px; margin-bottom: 4px; }
+    .onb-step p  { font-size: 12px; color: var(--muted); }
+
+    /* ─── PIPELINE (CRM) ─────────────────────────────────────────────────────── */
+    .pipeline-select {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-size: 12px; padding: 5px 8px; font-family: var(--font); cursor: pointer;
+    }
+    .pagination { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 14px; }
+    .pagination span { font-size: 12px; color: var(--muted); }
+
+    /* ─── EMAIL ANALYTICS ────────────────────────────────────────────────────── */
+    .rate-bar { display: flex; align-items: center; gap: 8px; }
+    .rate-track { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .rate-fill  { height: 100%; border-radius: 3px; }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; height: auto; }
+      .sidebar {
+        width: 100%; min-width: 0; display: flex; gap: 4px;
+        padding: 8px; overflow-x: auto; border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-group { margin-bottom: 0; display: flex; gap: 4px; }
+      .nav-label { display: none; }
+      .nav-item { white-space: nowrap; padding: 8px 12px; }
+      .content { padding: 16px; }
+      .topbar { padding: 0 12px; }
+      .user-chip { display: none; }
+      .data-table th, .data-table td { padding: 8px 10px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    /* ─── MISC ───────────────────────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+    .text-mono { font-family: var(--mono); }
+    .import-section { margin-top: 28px; max-width: 680px; }
+    .import-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .help-text { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .import-area { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  </style>
+</head>
+<body>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      AutoDemo
+    </div>
+    <div class="topbar-right">
+      <div class="credits-chip" id="creditsBadge">💳 <span id="creditsCount">—</span> cr.</div>
+      <div class="user-chip">👤 <span id="userEmail">—</span></div>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn">Déconnexion</button>
+    </div>
+  </header>
+
+  <!-- Bannière email non vérifié -->
+  <div id="verifyBanner" class="verify-banner hidden" style="margin-top:56px">
+    ⚠️ Confirmez votre adresse email pour générer des sites (lien envoyé à l'inscription).
+    <button class="btn btn-ghost btn-xs" id="resendVerifyBtn">Renvoyer l'email</button>
+  </div>
+
+  <div class="layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="nav-group">
+        <div class="nav-label">Vue d'ensemble</div>
+        <div class="nav-item active" data-tab="overview">
+          <span class="nav-icon">📊</span> Métriques
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Gestion</div>
+        <div class="nav-item" data-tab="leads">
+          <span class="nav-icon">👥</span> Leads
+        </div>
+        <div class="nav-item" data-tab="sites">
+          <span class="nav-icon">🌐</span> Sites
+        </div>
+        <div class="nav-item" data-tab="add">
+          <span class="nav-icon">➕</span> Ajouter
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Paramètres</div>
+        <div class="nav-item" data-tab="account">
+          <span class="nav-icon">⚙️</span> Compte
+        </div>
+        <div class="nav-item" data-tab="integrations">
+          <span class="nav-icon">🔌</span> Intégrations
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTENT -->
+    <main class="content">
+
+      <!-- ════════════════ OVERVIEW ════════════════ -->
+      <div id="panel-overview" class="panel active">
+        <div class="panel-header">
+          <div class="panel-title">Tableau de bord</div>
+          <button class="btn btn-ghost btn-sm" id="refreshOverview">🔄 Actualiser</button>
+        </div>
+
+        <!-- Onboarding : affiché uniquement quand le compte est vide -->
+        <div id="onboarding" class="onboarding hidden">
+          <h2>👋 Bienvenue sur AutoDemo !</h2>
+          <p>3 étapes pour décrocher vos premiers clients :</p>
+          <div class="onb-steps">
+            <div class="onb-step" data-action="switch-tab" data-tab="add">
+              <div class="onb-num">1</div>
+              <h3>Ajoutez des leads</h3>
+              <p>À la main, en JSON, ou en scrapant Google Maps (entreprises sans site web).</p>
+            </div>
+            <div class="onb-step" data-action="switch-tab" data-tab="leads">
+              <div class="onb-num">2</div>
+              <h3>Générez leurs sites démo</h3>
+              <p>1 clic, 1 crédit : l'IA écrit le contenu et le site est en ligne immédiatement.</p>
+            </div>
+            <div class="onb-step" data-action="switch-tab" data-tab="overview">
+              <div class="onb-num">3</div>
+              <h3>Laissez la séquence travailler</h3>
+              <p>3 emails automatiques (J0, J+3, J+7). Les prospects qui répondent arrivent ici.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="metrics-grid" id="metricsGrid">
+          <div class="metric-card blue">
+            <div class="metric-label">Leads total</div>
+            <div class="metric-value blue" id="m-leads">—</div>
+            <div class="metric-sub" id="m-leads-sub">Chargement…</div>
+          </div>
+          <div class="metric-card green">
+            <div class="metric-label">Sites générés</div>
+            <div class="metric-value green" id="m-sites">—</div>
+            <div class="metric-sub" id="m-sites-sub">Chargement…</div>
+          </div>
+          <div class="metric-card amber">
+            <div class="metric-label">Vues totales</div>
+            <div class="metric-value amber" id="m-views">—</div>
+            <div class="metric-sub" id="m-views-sub">Chargement…</div>
+          </div>
+          <div class="metric-card green">
+            <div class="metric-label">Taux conversion</div>
+            <div class="metric-value green" id="m-conv">—</div>
+            <div class="metric-sub">leads → sites</div>
+          </div>
+          <div class="metric-card blue">
+            <div class="metric-label">Sites actifs</div>
+            <div class="metric-value blue" id="m-active">—</div>
+            <div class="metric-sub">vus ce mois</div>
+          </div>
+          <div class="metric-card red">
+            <div class="metric-label">En erreur</div>
+            <div class="metric-value" style="color:var(--red)" id="m-errors">—</div>
+            <div class="metric-sub">leads en échec</div>
+          </div>
+        </div>
+
+        <!-- Prospects chauds (formulaires de contact) -->
+        <div class="card" style="margin-bottom:24px;border:1px solid var(--green,#16a34a)">
+          <div class="card-header">
+            <div class="card-title">🔥 Prospects chauds — à rappeler en priorité</div>
+            <span class="badge badge-green" id="hotLeadsCount">0</span>
+          </div>
+          <div class="card-body" id="hotLeadsBody">
+            <div class="loading-state">Chargement…</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+
+          <!-- Top sites -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🏆 Top sites (vues)</div>
+            </div>
+            <div class="card-body" id="topSitesBody">
+              <div class="loading-state">Chargement…</div>
+            </div>
+          </div>
+
+          <!-- Leads non convertis -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">⚡ Leads sans site</div>
+              <span class="badge badge-amber" id="unconvertedCount">—</span>
+            </div>
+            <div class="card-body" id="unconvertedBody">
+              <div class="loading-state">Chargement…</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Performance emails (A/B) -->
+        <div class="card" style="margin-bottom: 24px">
+          <div class="card-header">
+            <div class="card-title">📧 Performance emails — par variante</div>
+            <span class="badge badge-blue" id="emailSeqBadge">—</span>
+          </div>
+          <div class="card-body" id="emailStatsBody">
+            <div class="loading-state">Chargement…</div>
+          </div>
+        </div>
+
+        <!-- Activité récente -->
+        <div class="card" style="margin-bottom: 24px">
+          <div class="card-header">
+            <div class="card-title">📈 Activité — 7 derniers jours</div>
+          </div>
+          <div class="sparkline" id="sparkline">
+            <div class="loading-state" style="padding:12px">Chargement…</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ════════════════ LEADS ════════════════ -->
+      <div id="panel-leads" class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Leads <span class="badge badge-blue" id="leadsCount">0</span></div>
+          <button class="btn btn-ghost btn-sm" id="refreshLeadsBtn">🔄 Actualiser</button>
+        </div>
+        <div id="leadsLoading" class="loading-state">Chargement…</div>
+        <div id="leadsEmpty" class="empty-state hidden">
+          <span class="empty-icon">👥</span>
+          <p>Aucun lead pour l'instant.</p>
+          <button class="btn btn-primary" style="margin-top:12px" data-action="switch-tab" data-tab="add">Ajouter un lead</button>
+        </div>
+        <div class="card hidden" id="leadsTable">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Entreprise</th>
+                <th>Activité</th>
+                <th>Ville</th>
+                <th>Site</th>
+                <th>Suivi commercial</th>
+                <th>Note</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="leadsBody"></tbody>
+          </table>
+          <div class="pagination" id="leadsPagination"></div>
+        </div>
+      </div>
+
+      <!-- ════════════════ SITES ════════════════ -->
+      <div id="panel-sites" class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Sites générés <span class="badge badge-green" id="sitesCount">0</span></div>
+          <button class="btn btn-ghost btn-sm" id="refreshSitesBtn">🔄 Actualiser</button>
+        </div>
+        <div id="sitesLoading" class="loading-state">Chargement…</div>
+        <div id="sitesEmpty" class="empty-state hidden">
+          <span class="empty-icon">🌐</span>
+          <p>Aucun site généré.</p>
+        </div>
+        <div id="sitesGrid" class="sites-grid hidden"></div>
+      </div>
+
+      <!-- ════════════════ ADD LEAD ════════════════ -->
+      <div id="panel-add" class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Ajouter un lead</div>
+        </div>
+        <form id="addLeadForm" class="form-card">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nom / Entreprise *</label>
+              <input type="text" id="leadName" placeholder="Plomberie Dupont" required maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label>Activité *</label>
+              <input type="text" id="leadActivity" placeholder="Plombier, Électricien…" required maxlength="200" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Ville *</label>
+              <input type="text" id="leadCity" placeholder="Lyon" required maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label>Email (optionnel)</label>
+              <input type="email" id="leadEmail" placeholder="contact@exemple.com" maxlength="200" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Téléphone (optionnel)</label>
+              <input type="tel" id="leadPhone" placeholder="06 12 34 56 78" maxlength="30" />
+            </div>
+            <div class="form-group" style="justify-content:flex-end;align-items:flex-end">
+              <button type="submit" class="btn btn-primary" id="addLeadBtn">➕ Ajouter</button>
+            </div>
+          </div>
+          <p id="addLeadMsg" class="form-msg hidden"></p>
+        </form>
+
+        <div class="import-section">
+          <h3>Import JSON</h3>
+          <p class="help-text">Importez plusieurs leads d'un coup.</p>
+          <div class="import-area">
+            <textarea id="jsonImport" placeholder='[{"name":"Garage Martin","activity":"Garagiste","city":"Bordeaux"},…]' rows="5"></textarea>
+            <button class="btn btn-ghost btn-sm" id="importJsonBtn">📥 Importer</button>
+          </div>
+          <p id="importMsg" class="form-msg hidden"></p>
+        </div>
+
+        <div class="import-section">
+          <h3>🗺️ Import Google Maps</h3>
+          <p class="help-text">Scrape les entreprises sans site web pour une activité et une ville. Les leads apparaissent au fil de l'eau dans l'onglet Leads (nécessite Playwright sur le serveur).</p>
+          <form id="scrapeForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div class="form-group" style="flex:1;min-width:160px">
+              <label>Activité</label>
+              <input type="text" id="scrapeActivity" placeholder="plombier" required maxlength="100" />
+            </div>
+            <div class="form-group" style="flex:1;min-width:160px">
+              <label>Ville</label>
+              <input type="text" id="scrapeCity" placeholder="Lyon" required maxlength="100" />
+            </div>
+            <div class="form-group" style="width:110px">
+              <label>Max</label>
+              <input type="number" id="scrapeLimit" value="20" min="1" max="60" />
+            </div>
+            <button type="submit" class="btn btn-primary" id="scrapeBtn">🚀 Scraper</button>
+          </form>
+          <p id="scrapeMsg" class="form-msg hidden"></p>
+        </div>
+
+        <div class="import-section">
+          <h3>♻️ Abonnement mensuel</h3>
+          <p class="help-text">Crédits rechargés automatiquement chaque mois. Annulable à tout moment.</p>
+          <div id="plansGrid" style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="loading-state" style="padding:8px">Chargement des formules…</div>
+          </div>
+          <p id="plansMsg" class="form-msg hidden"></p>
+        </div>
+
+        <div class="import-section">
+          <h3>💳 Acheter des crédits (ponctuel)</h3>
+          <p class="help-text">1 crédit = 1 site généré. Paiement sécurisé via Stripe.</p>
+          <div id="packsGrid" style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="loading-state" style="padding:8px">Chargement des offres…</div>
+          </div>
+          <p id="packsMsg" class="form-msg hidden"></p>
+        </div>
+      </div>
+
+      <!-- ════════════════ COMPTE ════════════════ -->
+      <div id="panel-account" class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Mon compte</div>
+        </div>
+
+        <div class="form-card" style="margin-bottom:20px">
+          <h3 style="font-size:14px;margin-bottom:12px">Informations</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Email : <span id="accEmail" style="color:var(--text)">—</span>
+            <span id="accVerified" class="badge badge-muted" style="margin-left:8px">—</span></p>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Crédits restants : <span id="accCredits" style="color:var(--text)">—</span></p>
+          <p style="font-size:13px;color:var(--muted)">Abonnement : <span id="accSub" style="color:var(--text)">—</span>
+            <button class="btn btn-ghost btn-xs hidden" id="portalBtn" style="margin-left:8px">Gérer</button></p>
+        </div>
+
+        <!-- Coordonnées de facturation (déterminent la TVA des factures) -->
+        <div class="form-card" style="margin-bottom:20px">
+          <h3 style="font-size:14px;margin-bottom:4px">🧾 Coordonnées de facturation</h3>
+          <p class="help-text" style="margin-bottom:14px">Apparaissent sur vos factures. Le pays + n° TVA déterminent le régime (autoliquidation intracom, etc.).</p>
+          <div class="form-row">
+            <div class="form-group"><label>Raison sociale</label><input type="text" id="bName" maxlength="200" placeholder="Mon Entreprise SARL" /></div>
+            <div class="form-group"><label>Pays (ISO2)</label><input type="text" id="bCountry" maxlength="2" placeholder="FR" style="text-transform:uppercase" /></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Adresse</label><input type="text" id="bAddress" maxlength="400" placeholder="12 rue… 75001 Paris" /></div>
+            <div class="form-group"><label>N° TVA intracom (optionnel)</label><input type="text" id="bVat" maxlength="32" placeholder="FR12345678901" /></div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="saveBillingBtn">Enregistrer</button>
+          <p id="billingMsg" class="form-msg hidden"></p>
+        </div>
+
+        <!-- Factures -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header"><div class="card-title">📄 Mes factures</div></div>
+          <div class="card-body" id="invoicesBody"><div class="loading-state">Chargement…</div></div>
+        </div>
+
+        <!-- Données personnelles (RGPD) -->
+        <div class="form-card" style="margin-bottom:20px">
+          <h3 style="font-size:14px;margin-bottom:8px">📦 Mes données (RGPD)</h3>
+          <p class="help-text" style="margin-bottom:12px">Téléchargez l'ensemble de vos données — compte, leads, sites, factures (droit à la portabilité, art. 20).</p>
+          <a href="/users/me/export" class="btn btn-ghost btn-sm" download>⬇️ Exporter mes données (JSON)</a>
+          <p class="help-text" style="margin-top:14px">
+            <a href="/legal/mentions" target="_blank">Mentions légales</a> ·
+            <a href="/legal/confidentialite" target="_blank">Confidentialité</a> ·
+            <a href="/legal/cgv" target="_blank">CGV</a>
+          </p>
+        </div>
+
+        <div class="form-card" style="border-color:rgba(248,113,113,.4)">
+          <h3 style="font-size:14px;color:var(--red);margin-bottom:8px">⚠️ Zone dangereuse</h3>
+          <p class="help-text" style="margin-bottom:14px">
+            Supprime définitivement votre compte et <strong>toutes</strong> vos données :
+            leads, sites générés, statistiques, séquences email (droit à l'effacement, RGPD art. 17).
+            Cette action est irréversible.
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div class="form-group" style="flex:1;min-width:200px">
+              <label>Confirmez avec votre mot de passe</label>
+              <input type="password" id="deletePassword" placeholder="Mot de passe" autocomplete="current-password"
+                style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;padding:9px 12px" />
+            </div>
+            <button class="btn btn-red" id="deleteAccountBtn">🗑️ Supprimer mon compte</button>
+          </div>
+          <p id="deleteMsg" class="form-msg hidden"></p>
+        </div>
+      </div>
+
+      <!-- ════════════════ INTÉGRATIONS ════════════════ -->
+      <div id="panel-integrations" class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Intégrations</div>
+        </div>
+        <p class="help-text" style="max-width:680px;margin-bottom:20px">
+          Chaque étape du workflow est activable indépendamment via les variables d'environnement
+          du serveur. 🟢 = active · ⚪ = dormante. Posez la variable indiquée puis redémarrez.
+        </p>
+        <div id="featuresGrid" class="sites-grid">
+          <div class="loading-state">Chargement…</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- GENERATE MODAL -->
+  <div id="generateModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3>⚡ Générer un site démo</h3>
+      <p id="generateModalInfo"></p>
+      <div class="form-group" style="margin:14px 0">
+        <label for="templateSelect" style="display:block;font-size:13px;margin-bottom:6px">Template du site</label>
+        <select id="templateSelect" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border,#333);background:inherit;color:inherit"></select>
+        <p id="templateDesc" style="font-size:12px;color:var(--muted,#888);margin-top:6px"></p>
+      </div>
+      <div id="generateModalLoading" class="modal-loading hidden">
+        <div class="spinner"></div>
+        <p style="font-size:13px;color:var(--muted)">Génération en cours…</p>
+      </div>
+      <p id="generateModalError" class="form-msg form-msg-error hidden"></p>
+      <div class="modal-actions" id="generateModalActions">
+        <button class="btn btn-ghost" id="cancelGenerateBtn">Annuler</button>
+        <button class="btn btn-primary" id="confirmGenerateBtn">Générer (1 crédit)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESEND MODAL -->
+  <div id="resendModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3>📧 Relancer par email</h3>
+      <p id="resendModalInfo"></p>
+      <div id="resendModalLoading" class="modal-loading hidden">
+        <div class="spinner"></div>
+        <p style="font-size:13px;color:var(--muted)">Envoi en cours…</p>
+      </div>
+      <p id="resendModalError" class="form-msg form-msg-error hidden"></p>
+      <div class="modal-actions" id="resendModalActions">
+        <button class="btn btn-ghost" id="cancelResendBtn">Annuler</button>
+        <button class="btn btn-primary" id="confirmResendBtn">✉️ Envoyer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TIMELINE MODAL -->
+  <div id="timelineModal" class="modal-overlay hidden">
+    <div class="modal" style="max-width:520px">
+      <h3 id="timelineTitle">📜 Historique</h3>
+      <div id="timelineBody" style="max-height:50vh;overflow-y:auto;margin-top:12px">
+        <div class="loading-state">Chargement…</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="closeTimelineBtn">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

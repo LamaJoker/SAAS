@@ -1,0 +1,39 @@
+# AutoDemo SaaS — pile de production (app + reverse proxy HTTPS auto).
+#   docker compose up -d --build
+# Caddy obtient et renouvelle automatiquement le certificat TLS Let's Encrypt.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "3000"
+    volumes:
+      - autodemo-data:/app/data      # base SQLite + backups
+      - autodemo-output:/app/output  # sites HTML générés
+      - autodemo-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  autodemo-data:
+  autodemo-output:
+  autodemo-logs:
+  caddy-data:
+  caddy-config:

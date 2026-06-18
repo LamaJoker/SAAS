@@ -1,0 +1,18 @@
+# Remplacez votre-domaine.fr par votre domaine. Caddy gère le TLS tout seul.
+votre-domaine.fr {
+	encode gzip
+
+	# Le webhook Stripe a besoin du corps brut : Caddy ne le modifie pas, OK.
+	reverse_proxy app:3000
+
+	# En-têtes de sécurité au niveau proxy (complètent ceux de l'app)
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	request_body {
+		max_size 2MB
+	}
+}

@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="{{name}} — {{activity}} à {{city}} — Devis gratuit en 24h" />
+  <title>{{name}} — {{activity}} à {{city}}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    :root {
+      --primary:   #2563eb;
+      --primary-h: #1d4ed8;
+      --accent:    #f59e0b;
+      --accent-h:  #d97706;
+      --success:   #16a34a;
+      --text:      #111827;
+      --text-muted:#6b7280;
+      --bg:        #ffffff;
+      --bg-light:  #f8fafc;
+      --bg-dark:   #0f172a;
+      --border:    #e5e7eb;
+      --radius:    8px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.1);
+      --shadow:    0 4px 20px rgba(0,0,0,.09);
+      --shadow-lg: 0 10px 40px rgba(0,0,0,.13);
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+      font-size: 16px;
+    }
+
+    img { max-width: 100%; }
+    a { color: var(--primary); text-decoration: none; }
+
+    /* ─── STICKY HEADER ──────────────────────────────── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,.97);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav {
+      max-width: 1100px;
+      margin: 0 auto;
+      height: 60px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-brand {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .nav-links { display: flex; gap: 24px; list-style: none; }
+    .nav-links a { font-size: 14px; color: var(--text-muted); transition: color .2s; }
+    .nav-links a:hover { color: var(--primary); }
+
+    .nav-cta-wrap { display: flex; align-items: center; gap: 10px; }
+
+    /* ─── BUTTONS ────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 13px 26px;
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all .18s;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 3px 10px rgba(37,99,235,.35);
+    }
+    .btn-primary:hover {
+      background: var(--primary-h);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(37,99,235,.4);
+      color: #fff;
+    }
+    .btn-accent {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 3px 10px rgba(245,158,11,.35);
+    }
+    .btn-accent:hover {
+      background: var(--accent-h);
+      transform: translateY(-1px);
+      color: #fff;
+    }
+    .btn-outline {
+      background: #fff;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+    }
+    .btn-outline:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn-lg { padding: 16px 34px; font-size: 17px; border-radius: 10px; }
+    .btn-sm { padding: 8px 16px; font-size: 13px; }
+
+    /* ─── URGENCY BAR ────────────────────────────────── */
+    .urgency-bar {
+      background: linear-gradient(90deg, #1e3a8a, #2563eb);
+      color: #fff;
+      text-align: center;
+      padding: 9px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: .01em;
+    }
+    .urgency-bar strong { color: #fde68a; }
+
+    /* ─── HERO ───────────────────────────────────────── */
+    .hero {
+      padding: 64px 20px 72px;
+      background: linear-gradient(160deg, #eff6ff 0%, #dbeafe 60%, #ede9fe 100%);
+      text-align: center;
+    }
+    .hero .container { max-width: 760px; margin: 0 auto; }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(37,99,235,.1);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+    }
+    .hero-badge::before { content: ''; width: 7px; height: 7px; background: var(--success); border-radius: 50%; display: inline-block; }
+
+    .hero h1 {
+      font-size: clamp(30px, 5.5vw, 52px);
+      font-weight: 800;
+      line-height: 1.15;
+      color: var(--text);
+      margin-bottom: 18px;
+    }
+    .hero h1 span { color: var(--primary); }
+
+    .hero-sub {
+      font-size: 18px;
+      color: var(--text-muted);
+      margin-bottom: 34px;
+      line-height: 1.7;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 36px;
+    }
+
+    .hero-trust {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .trust-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ─── CONTACT STRIP ──────────────────────────────── */
+    .contact-strip {
+      background: var(--bg-dark);
+      color: #fff;
+      padding: 18px 20px;
+    }
+    .contact-strip .inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .contact-pill {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #e2e8f0;
+      background: rgba(255,255,255,.07);
+      padding: 9px 18px;
+      border-radius: 40px;
+      border: 1px solid rgba(255,255,255,.12);
+      text-decoration: none;
+      transition: background .18s;
+    }
+    .contact-pill:hover { background: rgba(255,255,255,.13); color: #fff; }
+    .contact-pill svg { width: 16px; height: 16px; opacity: .8; }
+
+    /* ─── SECTIONS ───────────────────────────────────── */
+    section { padding: 72px 20px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    .section-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    .section-title {
+      font-size: clamp(22px, 3.5vw, 32px);
+      font-weight: 800;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+    .section-sub {
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 520px;
+    }
+
+    /* ─── SERVICES ───────────────────────────────────── */
+    #services { background: var(--bg-light); }
+    .services-header { margin-bottom: 44px; }
+
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+    .service-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 26px 22px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      transition: box-shadow .2s, transform .2s, border-color .2s;
+    }
+    .service-card:hover {
+      box-shadow: var(--shadow);
+      transform: translateY(-2px);
+      border-color: #bfdbfe;
+    }
+    .svc-icon {
+      width: 48px; height: 48px;
+      background: #eff6ff;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .svc-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+    .svc-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+
+    /* ─── BENEFITS ───────────────────────────────────── */
+    .benefits-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+    .benefits-list { list-style: none; display: flex; flex-direction: column; gap: 16px; margin-top: 30px; }
+    .benefits-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    .check-icon {
+      width: 22px; height: 22px;
+      background: var(--primary);
+      color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .benefits-visual {
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border-radius: 20px;
+      padding: 44px;
+      text-align: center;
+    }
+    .bv-big { font-size: 72px; margin-bottom: 18px; }
+    .bv-stat {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px 20px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+      text-align: left;
+    }
+    .bv-stat-num { font-size: 22px; font-weight: 800; color: var(--primary); }
+    .bv-stat-label { font-size: 13px; color: var(--text-muted); }
+
+    /* ─── TESTIMONIALS ───────────────────────────────── */
+    #avis { background: var(--bg-light); }
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-top: 44px;
+    }
+    .tcard {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 26px;
+      position: relative;
+    }
+    .tcard::before {
+      content: '\201C';
+      font-size: 64px;
+      font-family: Georgia, serif;
+      color: var(--primary);
+      opacity: .18;
+      position: absolute;
+      top: 6px; left: 14px;
+      line-height: 1;
+      pointer-events: none;
+    }
+    .tcard-stars {
+      display: flex; gap: 3px; margin-bottom: 12px;
+      padding-top: 8px;
+    }
+    .star { color: var(--accent); font-size: 14px; }
+    .tcard-text { font-size: 14px; line-height: 1.7; margin-bottom: 16px; color: var(--text); }
+    .tcard-author { font-size: 13px; font-weight: 700; color: var(--primary); }
+    .tcard-role { font-size: 12px; color: var(--text-muted); }
+
+    /* ─── CTA FINALE ─────────────────────────────────── */
+    #cta-finale {
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #4f46e5 100%);
+      text-align: center;
+      padding: 80px 20px;
+    }
+    #cta-finale .section-title { color: #fff; font-size: clamp(26px, 4vw, 40px); margin-bottom: 14px; }
+    #cta-finale .section-sub { color: rgba(255,255,255,.8); margin: 0 auto 36px; max-width: 560px; font-size: 17px; }
+
+    .cta-avantages {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 32px;
+    }
+    .cta-av-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 40px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #fff;
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────── */
+    footer {
+      background: var(--bg-dark);
+      color: #94a3b8;
+      text-align: center;
+      padding: 30px 20px;
+      font-size: 13px;
+    }
+    footer strong { color: #e2e8f0; }
+
+    /* ─── RESPONSIVE ─────────────────────────────────── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .benefits-split { grid-template-columns: 1fr; gap: 32px; }
+      .benefits-visual { display: none; }
+      .btn-lg { padding: 14px 24px; font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BARRE D'URGENCE -->
+  <div class="urgency-bar">
+    <strong>Disponible aujourd'hui</strong> — Devis gratuit sous 24h · Sans engagement · Intervention rapide à {{city}}
+  </div>
+
+  <!-- NAVIGATION -->
+  <header>
+    <nav>
+      <span class="nav-brand">{{name}}</span>
+      <ul class="nav-links">
+        <li><a href="#services">Services</a></li>
+        <li><a href="#avantages">Pourquoi nous</a></li>
+        <li><a href="#avis">Avis clients</a></li>
+      </ul>
+      <div class="nav-cta-wrap">
+        {{#if phone}}<a href="tel:{{phone}}" class="btn btn-accent btn-sm">📞 Appeler</a>{{/if}}
+        <a href="#cta-finale" class="btn btn-primary btn-sm">Devis gratuit</a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">📍 {{city}} · Disponible maintenant</div>
+      <h1>{{heroTitle}}</h1>
+      <p class="hero-sub">{{heroSubtitle}}</p>
+      <div class="hero-actions">
+        <a href="#cta-finale" class="btn btn-accent btn-lg">✉️ Je veux ce site</a>
+        {{#if phone}}<a href="tel:{{phone}}" class="btn btn-outline btn-lg">📞 {{phone}}</a>{{/if}}
+      </div>
+      <div class="hero-trust">
+        <div class="trust-item">
+          <svg viewBox="0 0 20 20" fill="none" stroke="#16a34a" stroke-width="2"><path d="M5 10l4 4 6-6"/></svg>
+          Devis gratuit
+        </div>
+        <div class="trust-item">
+          <svg viewBox="0 0 20 20" fill="none" stroke="#16a34a" stroke-width="2"><path d="M5 10l4 4 6-6"/></svg>
+          Sans engagement
+        </div>
+        <div class="trust-item">
+          <svg viewBox="0 0 20 20" fill="none" stroke="#16a34a" stroke-width="2"><path d="M5 10l4 4 6-6"/></svg>
+          Réponse en 24h
+        </div>
+        <div class="trust-item">
+          <svg viewBox="0 0 20 20" fill="none" stroke="#16a34a" stroke-width="2"><path d="M5 10l4 4 6-6"/></svg>
+          Professionnel certifié
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT RAPIDE -->
+  <div class="contact-strip">
+    <div class="inner">
+      <span style="color:#94a3b8;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Contactez-nous</span>
+      {{#if phone}}
+      <a href="tel:{{phone}}" class="contact-pill">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/></svg>
+        {{phone}}
+      </a>
+      {{/if}}
+      {{#if email}}
+      <a href="mailto:{{email}}" class="contact-pill">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+        {{email}}
+      </a>
+      {{/if}}
+      <a href="#cta-finale" class="contact-pill" style="background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.3);color:#fbbf24;">
+        📋 Demander un devis
+      </a>
+    </div>
+  </div>
+
+  <!-- SERVICES -->
+  <section id="services">
+    <div class="container">
+      <div class="services-header">
+        <div class="section-tag">Nos prestations</div>
+        <h2 class="section-title">Ce que nous faisons pour vous</h2>
+        <p class="section-sub">Des services adaptés à vos besoins, assurés par des professionnels qualifiés à {{city}}.</p>
+      </div>
+      <div class="services-grid">
+        {{services}}
+      </div>
+    </div>
+  </section>
+
+  <!-- AVANTAGES -->
+  <section id="avantages">
+    <div class="container">
+      <div class="benefits-split">
+        <div>
+          <div class="section-tag">Pourquoi nous choisir</div>
+          <h2 class="section-title">Votre partenaire de confiance à {{city}}</h2>
+          {{benefits}}
+        </div>
+        <div class="benefits-visual">
+          <div class="bv-big">🏆</div>
+          <div class="bv-stat">
+            <div>
+              <div class="bv-stat-num">+500</div>
+              <div class="bv-stat-label">Clients satisfaits</div>
+            </div>
+          </div>
+          <div class="bv-stat">
+            <div>
+              <div class="bv-stat-num">10 ans</div>
+              <div class="bv-stat-label">D'expérience locale</div>
+            </div>
+          </div>
+          <div class="bv-stat">
+            <div>
+              <div class="bv-stat-num">4.9/5</div>
+              <div class="bv-stat-label">Note moyenne client</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TÉMOIGNAGES -->
+  <section id="avis">
+    <div class="container">
+      <div class="section-tag">Ils nous font confiance</div>
+      <h2 class="section-title">Avis de nos clients</h2>
+      <div class="testimonials-grid">
+        {{testimonials}}
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINALE -->
+  <section id="cta-finale">
+    <div class="container">
+      <div class="section-title">{{cta}}</div>
+      <p class="section-sub">Contactez-nous dès maintenant — réponse garantie sous 24h. Devis gratuit, sans engagement.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;">
+        {{#if phone}}
+        <a href="tel:{{phone}}" class="btn btn-accent btn-lg">📞 Appeler maintenant</a>
+        {{/if}}
+        {{#if email}}
+        <a href="mailto:{{email}}?subject=Demande de devis — {{name}}" class="btn btn-lg" style="background:#fff;color:var(--primary);">
+          ✉️ Envoyer un email
+        </a>
+        {{/if}}
+      </div>
+      <div class="cta-avantages">
+        <div class="cta-av-item">✅ Devis gratuit en 24h</div>
+        <div class="cta-av-item">📍 Basé à {{city}}</div>
+        <div class="cta-av-item">🔒 Sans engagement</div>
+        <div class="cta-av-item">⚡ Intervention rapide</div>
+      </div>
+    </div>
+  </section>
+
+  {{#if gallery}}
+  <!-- GALERIE (images activées via DEMO_IMAGES_PROVIDER) -->
+  <section style="padding:64px 20px;max-width:1100px;margin:0 auto;">
+    <h2 style="text-align:center;font-size:28px;margin-bottom:28px;">Nos réalisations</h2>
+    {{gallery}}
+  </section>
+  {{/if}}
+
+  <!-- CONTACT FORM -->
+  <section id="contact-form" style="padding:80px 20px;background:var(--bg-light);">
+    <div style="max-width:560px;margin:0 auto;">
+      <h2 style="text-align:center;font-size:28px;margin-bottom:8px;">Demandez à être rappelé</h2>
+      <p style="text-align:center;color:var(--text-muted);margin-bottom:32px;">Laissez vos coordonnées — {{name}} vous recontacte sous 24h.</p>
+      <form id="demoContactForm" style="display:grid;gap:14px;background:#fff;padding:30px;border-radius:var(--radius-lg);box-shadow:var(--shadow);">
+        <input name="name" required placeholder="Votre nom *" maxlength="100"
+          style="padding:13px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;" />
+        <input name="phone" type="tel" placeholder="Votre téléphone" maxlength="30"
+          style="padding:13px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;" />
+        <input name="email" type="email" placeholder="Votre email" maxlength="100"
+          style="padding:13px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;" />
+        <textarea name="message" rows="3" placeholder="Votre message (optionnel)" maxlength="500"
+          style="padding:13px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:inherit;resize:vertical;"></textarea>
+        <button type="submit"
+          style="padding:14px;border:none;border-radius:var(--radius);background:var(--primary);color:#fff;font-size:16px;font-weight:600;cursor:pointer;">
+          Être rappelé gratuitement
+        </button>
+        <p style="font-size:11px;color:var(--text-muted);text-align:center;margin:0;">
+          En envoyant ce formulaire, vous acceptez d'être recontacté au sujet de votre demande.
+          Vos coordonnées ne sont utilisées que pour ce rappel.
+        </p>
+        <p id="contactFormMsg" style="display:none;text-align:center;font-size:14px;margin:0;"></p>
+        <p style="text-align:center;font-size:11px;color:#94a3b8;margin:4px 0 0;">En soumettant ce formulaire, vous acceptez d'être recontacté. Voir la <a href="/legal/confidentialite" style="color:#94a3b8;">politique de confidentialité</a>.</p>
+      </form>
+    </div>
+  </section>
+
+  <script>
+    document.getElementById('demoContactForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const msg  = document.getElementById('contactFormMsg');
+      const data = Object.fromEntries(new FormData(form));
+      try {
+        const res = await fetch('/contact/{{slug}}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const out = await res.json();
+        msg.style.display = 'block';
+        if (res.ok && out.success) {
+          msg.style.color = '#16a34a';
+          msg.textContent = '✓ Message envoyé ! Nous vous recontactons très vite.';
+          form.reset();
+        } else {
+          msg.style.color = '#dc2626';
+          msg.textContent = out.error || 'Erreur lors de l\'envoi.';
+        }
+      } catch {
+        msg.style.display = 'block';
+        msg.style.color = '#dc2626';
+        msg.textContent = 'Impossible d\'envoyer le message.';
+      }
+    });
+  </script>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>© {{year}} <strong>{{name}}</strong> — {{activity}} à {{city}}</p>
+    <p style="margin-top:6px;font-size:12px;">Site créé avec AutoDemo</p>
+    <p style="margin-top:10px;font-size:11px;opacity:.7;">
+      Site de démonstration non contractuel, proposé à {{name}}. Informations issues de sources
+      publiques — pour toute demande de modification ou de suppression, utilisez le formulaire ci-dessus.
+    </p>
+  </footer>
+
+</body>
+</html>

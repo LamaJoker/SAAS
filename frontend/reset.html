@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoDemo — Nouveau mot de passe</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="logo-icon">🔑</span>
+      <h1>Nouveau mot de passe</h1>
+      <p>Choisissez un nouveau mot de passe pour votre compte</p>
+    </div>
+
+    <form id="resetForm" class="auth-form">
+      <div class="form-group">
+        <label for="password">Nouveau mot de passe</label>
+        <input type="password" id="password" placeholder="8 caractères minimum" required minlength="8" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label for="password2">Confirmez le mot de passe</label>
+        <input type="password" id="password2" placeholder="Retapez le mot de passe" required minlength="8" autocomplete="new-password" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" id="resetBtn">
+        <span class="btn-text">Changer le mot de passe</span>
+        <span class="btn-loader hidden">⏳</span>
+      </button>
+      <p id="resetError" class="form-error hidden"></p>
+      <p id="resetOk" class="form-error hidden" style="color:#16a34a;background:rgba(22,163,74,.08);"></p>
+    </form>
+
+    <p class="auth-note"><a href="/login">← Retour à la connexion</a></p>
+  </div>
+
+  <script src="reset.js"></script>
+</body>
+</html>

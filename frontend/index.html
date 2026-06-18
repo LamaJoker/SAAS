@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoDemo SaaS — Connexion</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="logo-icon">⚡</span>
+      <h1>AutoDemo</h1>
+      <p>Générateur de sites démo pour vos prospects</p>
+    </div>
+
+    <form id="loginForm" class="auth-form">
+      <div class="form-group">
+        <label for="email">Adresse email</label>
+        <input type="email" id="email" placeholder="vous@exemple.com" required autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" placeholder="8 caractères minimum" required minlength="8" autocomplete="current-password" />
+      </div>
+      <div class="form-group hidden" id="nameGroup">
+        <label for="name">Nom (optionnel)</label>
+        <input type="text" id="name" placeholder="Votre nom ou entreprise" autocomplete="name" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" id="loginBtn">
+        <span class="btn-text">Se connecter</span>
+        <span class="btn-loader hidden">⏳</span>
+      </button>
+      <p id="loginError" class="form-error hidden"></p>
+      <p id="loginInfo" class="form-error hidden" style="color:#16a34a;background:rgba(22,163,74,.08);"></p>
+    </form>
+
+    <p class="auth-note">
+      <a href="#" id="toggleMode">Pas encore de compte ? Créer un compte</a><br />
+      <a href="#" id="forgotLink" style="font-size:12px;">Mot de passe oublié ?</a><br />
+      Tout nouveau compte reçoit <strong>10 crédits offerts</strong>.
+    </p>
+  </div>
+
+  <footer style="text-align:center;margin-top:24px;font-size:12px;opacity:.6">
+    <a href="/legal/mentions">Mentions légales</a> ·
+    <a href="/legal/confidentialite">Confidentialité</a> ·
+    <a href="/legal/cgv">CGV</a>
+  </footer>
+
+  <script src="index.js"></script>
+</body>
+</html>
