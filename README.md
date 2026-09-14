@@ -3,7 +3,7 @@
 > Génère automatiquement des sites vitrines pour PME locales, puis les démarche par séquence email — de la prospection au paiement.
 
 [![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-175%20passing-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-180%20passing-brightgreen)](#-tests)
 [![Evals](https://img.shields.io/badge/evals-7%20crit%C3%A8res%20automatis%C3%A9s-8b5cf6)](evals/)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com)
@@ -99,7 +99,7 @@ saas/
 ├── evals/                  # harnais d'évaluation du contenu généré (7 scoreurs, 10 cas)
 ├── templates/              # 3 templates de sites vitrines
 ├── frontend/               # dashboard + landing (HTML/CSS/JS statiques, CSP stricte)
-├── tests/                  # 20 fichiers Vitest + supertest + pg-mem (175 tests)
+├── tests/                  # 21 fichiers Vitest + supertest + pg-mem (180 tests)
 ├── docs/                   # décisions d'ingénierie, déploiement, délivrabilité, scaling
 └── deploy/                 # systemd + Docker + Caddy
 ```
@@ -158,7 +158,7 @@ npm run make-admin
 ## 🧪 Tests
 
 ```bash
-npm test           # 175 tests, 20 fichiers (Vitest)
+npm test           # 180 tests, 21 fichiers (Vitest)
 npm run test:watch
 npm run test:coverage
 npm run lint       # 0 erreur

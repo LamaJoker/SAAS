@@ -23,7 +23,10 @@ services:
       # Render génère un secret aléatoire sécurisé (≥32 caractères) au 1er déploiement
       - key: JWT_SECRET
         generateValue: true
-      # Mode démo : génère des sites sans clé IA. Mettre une vraie AI_API_KEY pour le mode réel.
+      # Mode démo : génère des sites sans clé IA (chemin de déploiement supporté,
+      # couvert par tests/configValidation.test.js). L'app démarre en avertissant
+      # que le contenu vient du repli. Pour une génération réelle : poser
+      # AI_API_KEY et retirer AI_MOCK_MODE.
       - key: AI_MOCK_MODE
         value: "true"
       # À renseigner après le 1er déploiement avec l'URL Render (ex: https://autodemo-saas.onrender.com)

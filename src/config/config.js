@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'url';
 import { dirname, join, isAbsolute } from 'path';
 import dotenv from 'dotenv';
+import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -176,8 +177,13 @@ export function validateConfig() {
   }
 
   if (config.server.env === 'production') {
-    if (!config.ai.apiKey || config.ai.apiKey === 'sk-...') {
-      errors.push('AI_API_KEY est requis en production');
+    // AI_MOCK_MODE=true est un mode de déploiement légitime : c'est celui du
+    // blueprint Render, qui permet de faire tourner l'application complète sans
+    // clé API. Exiger AI_API_KEY ici faisait échouer le démarrage sur une
+    // configuration que le dépôt documente lui-même — deux parties du projet se
+    // contredisaient, et l'erreur n'apparaissait qu'au déploiement.
+    if (!config.ai.mockMode && (!config.ai.apiKey || config.ai.apiKey === 'sk-...')) {
+      errors.push('AI_API_KEY est requis en production (ou AI_MOCK_MODE=true pour une démo sans clé)');
     }
     if (config.server.baseUrl === 'http://localhost:3000') {
       errors.push('BASE_URL doit être configuré en production');
@@ -189,5 +195,13 @@ export function validateConfig() {
 
   if (errors.length > 0) {
     throw new Error(`[Config] Erreurs de configuration:\n${errors.map(e => `  - ${e}`).join('\n')}`);
+  }
+
+  if (config.server.env === 'production' && config.ai.mockMode) {
+    // Démarrage autorisé, mais jamais silencieux : sans cet avertissement, on
+    // peut servir du contenu de repli en production sans s'en rendre compte.
+    logger.warn('[Config] AI_MOCK_MODE=true en production — le contenu des sites '
+              + 'provient du générateur de repli, pas du modèle. Posez AI_API_KEY '
+              + 'et retirez AI_MOCK_MODE pour une génération réelle.');
   }
 }
