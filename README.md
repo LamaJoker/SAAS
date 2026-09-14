@@ -3,13 +3,31 @@
 > Génère automatiquement des sites vitrines pour PME locales, puis les démarche par séquence email — de la prospection au paiement.
 
 [![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-112%20passing-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-146%20passing-brightgreen)](#-tests)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-%E2%86%92%20PostgreSQL--ready-003B57?logo=sqlite&logoColor=white)](#-base-de-données)
 [![Docker](https://img.shields.io/badge/Docker-Caddy%20HTTPS-2496ED?logo=docker&logoColor=white)](#-déploiement)
 
 AutoDemo est une plateforme d'acquisition B2B de bout en bout : elle **scrape** des prospects (Google Maps), **génère** un site démo personnalisé par IA, puis lance une **séquence d'emails** de prospection avec suivi des ouvertures/clics, CRM, facturation Stripe et conformité RGPD.
+
+---
+
+## 👀 Voir le résultat
+
+**[→ Exemples de sites générés](https://lamajoker.github.io/SAAS/)** — trois sorties réelles du générateur (un template chacun), produites à partir d'une seule ligne de données : nom, activité, ville.
+
+Pour faire tourner l'application complète sans clé API ni configuration :
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/LamaJoker/SAAS)
+
+Le blueprint démarre en mode simulation (`AI_MOCK_MODE=true`) : le dashboard, la génération de sites, le CRM et les analytics fonctionnent sans dépendance externe.
+
+---
+
+## 🧭 Décisions d'ingénierie
+
+Le code seul ne dit pas pourquoi il est écrit ainsi. [**`docs/DECISIONS.md`**](docs/DECISIONS.md) détaille huit décisions structurantes avec leur **coût**, pas seulement leur bénéfice — SQLite plutôt que PostgreSQL, dépendances minimales, effets de bord non bloquants, pourquoi un webhook de paiement doit échouer bruyamment, classification hard/soft des rebonds email, et ce qui reste volontairement ouvert.
 
 ---
 
@@ -45,8 +63,8 @@ saas/
 │   └── utils/              # password (scrypt), tokens HMAC, logger, AppError
 ├── templates/              # 3 templates de sites vitrines
 ├── frontend/               # dashboard + landing (HTML/CSS/JS statiques, CSP stricte)
-├── tests/                  # 14 fichiers Vitest + supertest + pg-mem (112 tests)
-├── docs/                   # déploiement, délivrabilité, scaling (ADR PostgreSQL)
+├── tests/                  # 19 fichiers Vitest + supertest + pg-mem (146 tests)
+├── docs/                   # décisions d'ingénierie, déploiement, délivrabilité, scaling
 └── deploy/                 # systemd + Docker + Caddy
 ```
 
@@ -104,8 +122,10 @@ npm run make-admin
 ## 🧪 Tests
 
 ```bash
-npm test           # 112 tests, 14 fichiers (Vitest)
+npm test           # 146 tests, 19 fichiers (Vitest)
 npm run test:watch
+npm run test:coverage
+npm run lint       # 0 erreur
 ```
 
 Couverture des tests :
@@ -113,6 +133,7 @@ Couverture des tests :
 - **Unitaires** — scrypt, tokens HMAC (unsub / crm), scoring, TVA & factures, rendu email (golden master), validation de schéma IA, conformité légale
 - **Intégration** (supertest) — auth par cookie, isolation multi-tenant, génération transactionnelle + crédits, arrêt de séquence sur formulaire de contact, gating admin, webhook entrant
 - **PostgreSQL** (pg-mem) — requêtes paramétrées, déduplication par index partiel, idempotence `ON CONFLICT`, claim de jobs `UPDATE … RETURNING`
+- **Cas limites qui font mal en production** — rebonds email (DSN Postfix / Gmail / Exchange, classification hard vs soft), site présent en base mais fichier disparu du disque, purge qui doit épargner un lead engagé commercialement, agrégation avant suppression des événements
 
 ---
 
@@ -153,6 +174,7 @@ Runbook complet (config, SPF/DKIM/DMARC, backups/restore, supervision, scaling) 
 
 ## 📚 Documentation
 
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — **décisions d'ingénierie et arbitrages** (à lire en premier)
 - [`DEPLOY.md`](DEPLOY.md) — déploiement de A à Z
 - [`docs/DELIVRABILITE.md`](docs/DELIVRABILITE.md) — délivrabilité email (SPF / DKIM / DMARC / warmup)
 - [`docs/scaling.md`](docs/scaling.md) — ADR de migration PostgreSQL & montée en charge
