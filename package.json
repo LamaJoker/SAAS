@@ -13,7 +13,12 @@
     "migrate:pg": "node -e \"import('./src/db/pg.js').then(m => m.applyPgSchema()).then(() => process.exit(0))\"",
     "backup": "node src/scripts/backup.js",
     "worker:scrape": "node src/workers/standalone-scraper.js",
-    "make-admin": "node scripts/make-admin.js"
+    "make-admin": "node scripts/make-admin.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run lint && npm test",
+    "audit:optional": "npm i --no-save --no-audit stripe playwright bullmq ioredis imapflow twilio pg && npm audit"
   },
   "engines": {
     "node": ">=18"
@@ -28,8 +33,20 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "eslint": "^9.13.0",
     "pg-mem": "^3.0.14",
     "supertest": "^7.2.2",
     "vitest": "^2.1.0"
+  },
+  "//optionalFeatures": {
+    "_comment": "Dépendances chargées paresseusement, VOLONTAIREMENT non déclarées : les lister en optionalDependencies les ferait installer par défaut (playwright ≈ 300 Mo pour tout le monde). Installées à la demande, cf. DEPLOY.md. Auditées par `npm run audit:optional`.",
+    "stripe": "paiement (STRIPE_SECRET_KEY)",
+    "playwright": "scraper Google Maps (route /scrape)",
+    "bullmq + ioredis": "queue distribuée (QUEUE_DRIVER=bullmq) et rate limiter partagé",
+    "imapflow": "poller des réponses entrantes (INBOUND_ENABLED=true)",
+    "twilio": "WhatsApp (WHATSAPP_ENABLED=true)",
+    "pg": "PostgreSQL (DB_DRIVER=postgres)"
   }
 }

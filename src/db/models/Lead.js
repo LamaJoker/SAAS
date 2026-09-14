@@ -2,7 +2,10 @@ import { getDb }     from '../database.js';
 import { randomUUID } from 'crypto';
 
 export const Lead = {
-  create({ userId, name, activity, city, email, phone, website = null, emailSource = null }) {
+  // NOTE: `website` est accepté par compatibilité mais PAS persisté — la table
+  // leads n'a pas cette colonne. À trancher : ajouter la colonne, ou retirer le
+  // champ du contrat d'API (cf. audit, lot 2).
+  create({ userId, name, activity, city, email, phone, website: _website = null, emailSource = null }) {
     const db = getDb();
     const id = randomUUID();
     db.prepare(`

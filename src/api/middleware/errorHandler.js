@@ -2,6 +2,9 @@ import { AppError } from '../../utils/AppError.js';
 import { logger }    from '../../utils/logger.js';
 import { reportError } from '../../utils/errorReporter.js';
 
+// Express identifie un middleware d'erreur à son arité de 4 : retirer `next`
+// le transformerait en middleware ordinaire et casserait la gestion d'erreurs.
+// eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, next) {
   if (err instanceof AppError && err.isOperational) {
     return res.status(err.statusCode).json({

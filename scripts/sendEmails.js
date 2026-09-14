@@ -25,6 +25,7 @@
 
 import nodemailer    from 'nodemailer';
 import { parseArgs } from 'node:util';
+import { createApiClient } from './lib/apiClient.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { getDb }     from '../src/db/database.js';
 import { logger }    from '../src/utils/logger.js';
@@ -50,7 +51,6 @@ const { values: args } = parseArgs({
   strict: false,
 });
 
-const USER_ID         = args.userId    || process.env.USER_ID;
 const BASE_URL        = args.baseUrl;
 const TRACKING_URL    = process.env.TRACKING_URL || BASE_URL; // peut être un domaine dédié
 const DRY_RUN         = args['dry-run'];
@@ -64,11 +64,6 @@ const MAX_PER_HOUR    = parseInt(args['max-per-hour']) || 30;
 const BASE_DELAY_MS   = parseInt(args.delay) || 2000;
 const BLACKLIST_AFTER = parseInt(args['blacklist-after']) || 4;
 const LIMIT           = WARMUP ? 10 : (args.limit ? parseInt(args.limit) : Infinity);
-
-if (!USER_ID) {
-  console.error('❌  userId requis. Usage: node scripts/sendEmails.js --userId <ID>');
-  process.exit(1);
-}
 
 // ─── SPAM WORD DETECTION ─────────────────────────────────────────────────────
 
@@ -433,7 +428,7 @@ ${sender}`,
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-function unsubFooter(sender) {
+function unsubFooter(_sender) {
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || '';
   return `<p style="margin-top:24px;font-size:11px;color:#aaa">
     Pour ne plus recevoir nos emails :
@@ -497,19 +492,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
-async function apiFetch(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': USER_ID,
-      ...(options.headers || {}),
-    },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data.data;
-}
+// Client authentifié (login → Bearer), initialisé au démarrage de main().
+// L'en-tête x-user-id n'est plus lu par l'API depuis la migration JWT.
+let apiFetch;
+let userId;
 
 // ─── WARMUP SMTP ─────────────────────────────────────────────────────────────
 // Rampe progressive : évite de déclencher les filtres anti-spam
@@ -551,6 +537,8 @@ function getFollowUpTemplate(db, siteId) {
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  ({ apiFetch, userId } = await createApiClient({ baseUrl: BASE_URL }));
+
   const db = getDb();
   initTrackingSchema(db);
   initVariantStats(db);
@@ -563,7 +551,7 @@ async function main() {
   console.log('📬 AutoDemo — Machine à Conversion v2');
   console.log(`   Base URL      : ${BASE_URL}`);
   console.log(`   Tracking URL  : ${TRACKING_URL}`);
-  console.log(`   User ID       : ${USER_ID}`);
+  console.log(`   Compte        : ${userId}`);
   console.log(`   Mode          : ${DRY_RUN ? '🔍 DRY RUN' : '📨 ENVOI RÉEL'}`);
   console.log(`   Variante      : ${FORCE_VARIANT || 'UCB1 auto'}`);
   console.log(`   Warmup        : ${WARMUP ? `✅ (max ${effectiveLimit})` : '❌'}`);

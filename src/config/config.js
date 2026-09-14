@@ -15,12 +15,6 @@ function fromRoot(p) {
   return isAbsolute(p) ? p : join(ROOT, p);
 }
 
-function required(name) {
-  const val = process.env[name];
-  if (!val) throw new Error(`[Config] Variable d'environnement manquante: ${name}`);
-  return val;
-}
-
 function optional(name, fallback) {
   return process.env[name] ?? fallback;
 }
