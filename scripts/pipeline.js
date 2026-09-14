@@ -7,13 +7,13 @@
  *   3. Envoyer les emails de prospection aux leads avec email
  *
  * Usage:
- *   node scripts/pipeline.js --userId <USER_ID> --file ./data/leads.json
- *   node scripts/pipeline.js --userId <USER_ID> --file ./data/leads.json --skip-email
- *   node scripts/pipeline.js --userId <USER_ID> --no-import --skip-email
- *   node scripts/pipeline.js --userId <USER_ID> --dry-run
+ *   node scripts/pipeline.js --file ./data/leads.json
+ *   node scripts/pipeline.js --file ./data/leads.json --skip-email
+ *   node scripts/pipeline.js --no-import --skip-email
+ *   node scripts/pipeline.js --dry-run
  *
  * Options:
- *   --userId     (requis) ID utilisateur
+ *   (identité : SCRIPT_EMAIL / SCRIPT_PASSWORD dans .env)
  *   --file       Fichier JSON de leads à importer (optionnel si leads déjà en base)
  *   --no-import  Sauter l'étape d'import (utiliser les leads existants)
  *   --skip-email Ne pas envoyer les emails
@@ -25,13 +25,13 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { createApiClient } from './lib/apiClient.js';
 import nodemailer from 'nodemailer';
 
 // ─── ARG PARSING ─────────────────────────────────────────────────────────────
 
 const { values: args } = parseArgs({
   options: {
-    userId:      { type: 'string' },
     file:        { type: 'string' },
     'no-import': { type: 'boolean', default: false },
     'skip-email':{ type: 'boolean', default: false },
@@ -43,7 +43,6 @@ const { values: args } = parseArgs({
   strict: false,
 });
 
-const USER_ID     = args.userId     || process.env.USER_ID;
 const BASE_URL    = args.baseUrl;
 const LEADS_FILE  = args.file;
 const NO_IMPORT   = args['no-import'];
@@ -51,11 +50,6 @@ const SKIP_EMAIL  = args['skip-email'];
 const DRY_RUN     = args['dry-run'];
 const CONCURRENCY = Math.max(1, parseInt(args.concurrency) || 2);
 const EMAIL_DELAY = Math.max(0, parseInt(args.delay) || 2000);
-
-if (!USER_ID) {
-  console.error('❌  userId requis. Utilisez --userId <ID> ou définissez USER_ID dans .env');
-  process.exit(1);
-}
 
 // ─── LOGGER ───────────────────────────────────────────────────────────────────
 
@@ -69,19 +63,10 @@ const log = {
 
 // ─── API HELPERS ──────────────────────────────────────────────────────────────
 
-async function apiFetch(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': USER_ID,
-      ...(options.headers || {}),
-    },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status} on ${path}`);
-  return data.data;
-}
+// Client authentifié (login → Bearer), initialisé au démarrage de main().
+// L'en-tête x-user-id n'est plus lu par l'API depuis la migration JWT.
+let apiFetch;
+let userId;
 
 // ─── CONCURRENCY POOL ─────────────────────────────────────────────────────────
 
@@ -346,12 +331,14 @@ function buildProspectEmail({ name, city, url, sender }) {
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  ({ apiFetch, userId } = await createApiClient({ baseUrl: BASE_URL }));
+
   const startTime = Date.now();
 
   console.log('═'.repeat(60));
   console.log('🚀 AutoDemo — Pipeline complet');
   console.log(`   Base URL    : ${BASE_URL}`);
-  console.log(`   User ID     : ${USER_ID}`);
+  console.log(`   Compte      : ${userId}`);
   console.log(`   Fichier     : ${LEADS_FILE || 'aucun'}`);
   console.log(`   Concurrence : ${CONCURRENCY}`);
   console.log(`   Mode        : ${DRY_RUN ? '🔍 DRY RUN' : '⚡ PRODUCTION'}`);

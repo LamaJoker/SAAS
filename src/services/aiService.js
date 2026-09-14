@@ -223,5 +223,3 @@ export async function generateContent(lead) {
   return content;
 }
 
-// Alias pour compatibilité avec main.js (pipeline CLI)
-export { generateContent as generateAIContent };

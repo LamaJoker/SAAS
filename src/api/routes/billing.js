@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { User }   from '../../db/models/User.js'; // sync, utilisé DANS la transaction du webhook
 import { repo }   from '../../db/repo.js';        // async, hors transaction
 import { getDb }  from '../../db/database.js';
@@ -196,6 +196,84 @@ function applyPayment(db, { eventId, eventType, user, credits, type, description
   })();
 }
 
+/**
+ * Traite un événement Stripe.
+ *
+ * Extrait du handler HTTP pour être rejouable à l'identique depuis la route de
+ * réconciliation admin. Ne capture AUCUNE erreur : elle doit remonter jusqu'au
+ * handler pour déclencher le rejeu côté Stripe. Un type d'événement non géré
+ * n'est pas une erreur, il sort simplement.
+ */
+async function handleStripeEvent(event) {
+  const db = getDb();
+
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const s = event.data.object;
+      const userId = s.metadata?.userId;
+      const user = userId && await repo.users.findById(userId);
+      if (!user) return;
+
+      // Mémorise le client Stripe pour les achats/portail futurs
+      if (s.customer) await repo.users.setStripeCustomer(user.id, s.customer);
+
+      const credits = parseInt(s.metadata?.credits, 10);
+      if (!Number.isInteger(credits) || credits <= 0) return;
+
+      if (s.metadata?.kind === 'subscription') {
+        // 1er cycle : on active l'abonnement + crédite. Les renouvellements
+        // suivants passent par invoice.paid (billing_reason=subscription_cycle).
+        await repo.users.setSubscription(user.id, { plan: s.metadata.plan, status: 'active', periodEnd: null });
+        const plan = SUBSCRIPTION_PLANS[s.metadata.plan];
+        applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
+          type: 'subscription', description: `Abonnement ${plan?.label ?? s.metadata.plan} — 1er mois`,
+          amountTtc: plan?.price ?? 0, stripeRef: s.id });
+      } else {
+        const pack = CREDIT_PACKS[s.metadata.packId];
+        applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
+          type: 'pack', description: pack?.label ?? `${credits} crédits`,
+          amountTtc: pack?.price ?? 0, stripeRef: s.id });
+      }
+      logger.info('[Billing] Paiement traité 💰', { eventId: event.id, userId: user.id, kind: s.metadata?.kind });
+      return;
+    }
+
+    case 'invoice.paid': {
+      const inv = event.data.object;
+      // Uniquement les renouvellements : le 1er cycle est géré au checkout
+      if (inv.billing_reason !== 'subscription_cycle') return;
+      const user = inv.customer && await repo.users.findByStripeCustomer(inv.customer);
+      if (!user) return;
+      const plan = SUBSCRIPTION_PLANS[user.plan];
+      if (!plan) return;
+      if (inv.period_end) await repo.users.setSubscription(user.id, { plan: user.plan, status: 'active', periodEnd: new Date(inv.period_end * 1000).toISOString() });
+      applyPayment(db, { eventId: event.id, eventType: event.type, user, credits: plan.credits,
+        type: 'subscription', description: `Abonnement ${plan.label} — renouvellement`,
+        amountTtc: plan.price, stripeRef: inv.id });
+      logger.info('[Billing] Renouvellement abonnement', { eventId: event.id, userId: user.id });
+      return;
+    }
+
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted': {
+      const sub = event.data.object;
+      const user = sub.customer && await repo.users.findByStripeCustomer(sub.customer);
+      if (!user) return;
+      const status = event.type.endsWith('deleted') ? 'canceled' : sub.status;
+      await repo.users.setSubscription(user.id, {
+        plan: user.plan, status,
+        periodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : user.period_end,
+      });
+      logger.info('[Billing] Abonnement mis à jour', { userId: user.id, status });
+      return;
+    }
+
+    default:
+      // Type non géré : acquitté sans traitement, inutile que Stripe réessaie.
+      logger.info('[Billing] Événement ignoré', { eventId: event.id, type: event.type });
+  }
+}
+
 export async function stripeWebhookHandler(req, res) {
   const stripe = await getStripe();
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -205,79 +283,59 @@ export async function stripeWebhookHandler(req, res) {
   try {
     event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], secret);
   } catch (err) {
+    // Signature invalide : rejouer n'y changera rien, on clôt définitivement.
     logger.warn('[Billing] Signature webhook invalide', { error: err.message });
     return res.status(400).json({ success: false, error: 'Signature invalide' });
   }
 
-  const db = getDb();
   try {
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const s = event.data.object;
-        const userId = s.metadata?.userId;
-        const user = userId && await repo.users.findById(userId);
-        if (!user) break;
-
-        // Mémorise le client Stripe pour les achats/portail futurs
-        if (s.customer) await repo.users.setStripeCustomer(user.id, s.customer);
-
-        const credits = parseInt(s.metadata?.credits, 10);
-        if (!Number.isInteger(credits) || credits <= 0) break;
-
-        if (s.metadata?.kind === 'subscription') {
-          // 1er cycle : on active l'abonnement + crédite. Les renouvellements
-          // suivants passent par invoice.paid (billing_reason=subscription_cycle).
-          await repo.users.setSubscription(user.id, { plan: s.metadata.plan, status: 'active', periodEnd: null });
-          const plan = SUBSCRIPTION_PLANS[s.metadata.plan];
-          applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
-            type: 'subscription', description: `Abonnement ${plan?.label ?? s.metadata.plan} — 1er mois`,
-            amountTtc: plan?.price ?? 0, stripeRef: s.id });
-        } else {
-          const pack = CREDIT_PACKS[s.metadata.packId];
-          applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
-            type: 'pack', description: pack?.label ?? `${credits} crédits`,
-            amountTtc: pack?.price ?? 0, stripeRef: s.id });
-        }
-        logger.info('[Billing] Paiement traité 💰', { eventId: event.id, userId: user.id, kind: s.metadata?.kind });
-        break;
-      }
-
-      case 'invoice.paid': {
-        const inv = event.data.object;
-        // Uniquement les renouvellements : le 1er cycle est géré au checkout
-        if (inv.billing_reason !== 'subscription_cycle') break;
-        const user = inv.customer && await repo.users.findByStripeCustomer(inv.customer);
-        if (!user) break;
-        const plan = SUBSCRIPTION_PLANS[user.plan];
-        if (!plan) break;
-        if (inv.period_end) await repo.users.setSubscription(user.id, { plan: user.plan, status: 'active', periodEnd: new Date(inv.period_end * 1000).toISOString() });
-        applyPayment(db, { eventId: event.id, eventType: event.type, user, credits: plan.credits,
-          type: 'subscription', description: `Abonnement ${plan.label} — renouvellement`,
-          amountTtc: plan.price, stripeRef: inv.id });
-        logger.info('[Billing] Renouvellement abonnement', { eventId: event.id, userId: user.id });
-        break;
-      }
-
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
-        const sub = event.data.object;
-        const user = sub.customer && await repo.users.findByStripeCustomer(sub.customer);
-        if (!user) break;
-        const status = event.type.endsWith('deleted') ? 'canceled' : sub.status;
-        await repo.users.setSubscription(user.id, {
-          plan: user.plan, status,
-          periodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : user.period_end,
-        });
-        logger.info('[Billing] Abonnement mis à jour', { userId: user.id, status });
-        break;
-      }
-    }
+    await handleStripeEvent(event);
+    return res.json({ received: true });
   } catch (err) {
-    logger.error('[Billing] Erreur traitement webhook', { type: event.type, error: err.message });
-    // 200 quand même : éviter une boucle de retries Stripe sur une erreur applicative
+    // 500 → Stripe RÉESSAIE (backoff, jusqu'à ~3 jours). C'est le comportement
+    // voulu : un incident transitoire (SQLITE_BUSY, disque plein) ne doit pas
+    // faire disparaître des crédits déjà payés. Le rejeu est sûr, applyPayment
+    // insère event.id dans stripe_events DANS la même transaction que le crédit
+    // et la facture : si la transaction échoue, l'insertion est annulée avec
+    // le reste ; si elle a réussi, le rejeu est un no-op. Jamais de double
+    // crédit dans les deux cas.
+    //
+    // Répondre 200 ici — le comportement précédent — signifiait : client
+    // débité, crédits jamais versés, aucune trace exploitable, aucun rejeu.
+    logger.error('[Billing] Traitement webhook échoué — 500 pour rejeu Stripe', {
+      eventId: event.id, type: event.type, error: err.message, stack: err.stack,
+    });
+    return res.status(500).json({ success: false, error: 'Traitement impossible, rejeu attendu' });
   }
-
-  res.json({ received: true });
 }
+
+// ── Réconciliation manuelle (admin) ─────────────────────────────────────────
+// Filet de sécurité quand Stripe a épuisé ses rejeus (panne > 3 jours) ou
+// qu'un événement a été acquitté à tort par l'ancienne version du handler.
+// Idempotent : rejouer un événement déjà traité ne crédite rien.
+router.post('/replay/:eventId', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const stripe = await getStripe();
+    if (!stripe) return next(Errors.badRequest('Paiement non configuré'));
+
+    const eventId = String(req.params.eventId);
+    if (!/^evt_[A-Za-z0-9_]+$/.test(eventId)) {
+      return next(Errors.badRequest("Identifiant d'événement Stripe invalide (attendu: evt_…)"));
+    }
+
+    // Source de vérité = l'API Stripe, jamais un corps de requête : on ne
+    // crédite pas sur la foi d'un JSON posté à la main.
+    let event;
+    try {
+      event = await stripe.events.retrieve(eventId);
+    } catch (err) {
+      return next(Errors.notFound(`Événement introuvable chez Stripe : ${err.message}`));
+    }
+
+    await handleStripeEvent(event);
+    logger.warn('[Billing] Événement rejoué manuellement', { eventId, type: event.type, by: req.userId });
+    res.json({ success: true, data: { replayed: true, eventId, type: event.type } });
+  } catch (err) { next(err); }
+});
 
 export default router;

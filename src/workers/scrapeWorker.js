@@ -29,6 +29,9 @@ export async function scrapeHandler(job) {
     phone:    data.phone ? sanitizeInput(data.phone, 30)  : null,
     website:  data.website || null,
     emailSource: data.email ? 'scrape' : null,
+    // Trace de provenance : exigée pour justifier la base légale (intérêt
+    // légitime) d'une donnée collectée sans contact préalable.
+    source:   data.source || 'google_maps',
   };
 
   // Enrichissement : si pas d'email, tente d'en trouver un (sinon le lead ne

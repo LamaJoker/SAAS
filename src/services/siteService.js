@@ -8,6 +8,7 @@ import { getDb }             from '../db/database.js';
 import { generateSlug, withRetry } from '../utils/utils.js';
 import { logger }            from '../utils/logger.js';
 import { Errors }            from '../utils/AppError.js';
+import { buildDemoUrl } from '../utils/demoUrl.js';
 import { config }            from '../config/config.js';
 import { rm }                from 'fs/promises';
 import { join }              from 'path';
@@ -67,7 +68,7 @@ export async function generateSiteForLead({ userId, leadId, templateId = DEFAULT
   }
 
   // ── Transaction métier (synchrone, atomique) ───────────────────────────────
-  const url = `${config.server.baseUrl}/demos/${slug}`;
+  const url = buildDemoUrl(slug);
   const db  = getDb();
 
   const commit = db.transaction(() => {

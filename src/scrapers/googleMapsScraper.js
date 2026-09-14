@@ -15,7 +15,6 @@
 import { chromium }  from 'playwright';
 import { logger }    from '../utils/logger.js';
 import { getDb }     from '../db/database.js';
-import { slugify }   from '../utils/utils.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const SCROLL_COUNT     = 8;    // nombre de scrolls dans la liste (20 résultats/scroll)

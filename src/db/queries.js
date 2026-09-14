@@ -197,9 +197,33 @@ export async function markContactFollowup(leadId) {
 
 // ── Désabonnement ───────────────────────────────────────────────────────────
 export async function unsubscribeEmail(email) {
+  return blacklistEmail(email, 'unsubscribe');
+}
+
+/**
+ * Blackliste une adresse et stoppe toute séquence en cours pour elle.
+ * `reason` : unsubscribe | bounce_hard | bounce_soft_repeated | complaint
+ */
+export async function blacklistEmail(email, reason = 'unsubscribe') {
   const db = getDb();
-  db.prepare("INSERT OR IGNORE INTO email_blacklist (email, reason) VALUES (?, 'unsubscribe')").run(email);
-  db.prepare("UPDATE email_sequence SET status = 'unsubscribed' WHERE lead_id IN (SELECT id FROM leads WHERE email = ?)").run(email);
+  const addr = String(email).toLowerCase();
+  db.prepare('INSERT OR IGNORE INTO email_blacklist (email, reason) VALUES (?, ?)').run(addr, reason);
+  db.prepare("UPDATE email_sequence SET status = 'unsubscribed' WHERE lead_id IN (SELECT id FROM leads WHERE lower(email) = ?)").run(addr);
+}
+
+// ── Rebonds ─────────────────────────────────────────────────────────────────
+export async function recordBounce({ id, email, type, code = null, diagnostic = null }) {
+  getDb().prepare('INSERT INTO email_bounces (id, email, type, code, diagnostic) VALUES (?,?,?,?,?)')
+    .run(id, String(email).toLowerCase(), type, code, diagnostic);
+}
+
+/** Soft bounces distincts enregistrés pour cette adresse sur la fenêtre donnée. */
+export async function countRecentSoftBounces(email, days = 30) {
+  const row = getDb().prepare(
+    `SELECT COUNT(*) AS n FROM email_bounces
+     WHERE email = ? AND type = 'soft' AND created_at >= datetime('now', ?)`
+  ).get(String(email).toLowerCase(), `-${parseInt(days, 10)} days`);
+  return row?.n ?? 0;
 }
 
 // ── Tracking email (pixel ouverture + clic + stats) ─────────────────────────

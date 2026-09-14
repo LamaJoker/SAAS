@@ -32,6 +32,10 @@ import { startAllWorkers, stopAllWorkers } from '../workers/index.js';
 import { startSequenceWorker }    from '../workers/sequenceWorker.js';
 import { startInboundPoller, stopInboundPoller } from '../workers/inboundPoller.js';
 import { startBackupScheduler }   from '../services/backupService.js';
+import { startRetentionScheduler } from '../services/retentionService.js';
+import { startPrivacyScheduler } from '../services/prospectPrivacyService.js';
+import { requestId }             from './middleware/requestId.js';
+import { usesDemoHost }          from '../utils/demoUrl.js';
 import { join } from 'path';
 
 export function createApp() {
@@ -78,11 +82,29 @@ export function createApp() {
     next();
   });
 
+  app.use(requestId);
+
+  // Domaine dédié aux démos : `demos.mon-saas.fr/plombier-durand` est réécrit en
+  // `/demos/plombier-durand`. Un seul segment, au format slug, en GET : tout le
+  // reste (assets, /contact, /track, /unsubscribe appelés depuis la page démo)
+  // passe sans modification. Inactif tant que DEMO_HOST n'est pas configuré,
+  // donc aucun changement de comportement par défaut.
+  if (usesDemoHost()) {
+    const demoHost = config.server.demoHost.trim().toLowerCase();
+    app.use((req, res, next) => {
+      if (req.method === 'GET' && req.hostname?.toLowerCase() === demoHost) {
+        const m = req.path.match(/^\/([a-z0-9][a-z0-9-]{2,120})$/);
+        if (m) req.url = `/demos/${m[1]}`;
+      }
+      next();
+    });
+  }
+
   app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
       logger.info(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - start}ms`, {
-        userId: req.userId,
+        userId: req.userId, reqId: req.id,
       });
     });
     next();
@@ -171,6 +193,8 @@ export function startServer() {
   // Poller IMAP des réponses entrantes (dormant si non configuré)
   startInboundPoller().catch(() => {});
   startBackupScheduler(); // backup SQLite quotidien (data/backups/, 7 conservés)
+  startRetentionScheduler(); // agrégation + purge des events (RETENTION_DAYS)
+  startPrivacyScheduler();   // démos des désinscrits + leads périmés (LEAD_RETENTION_DAYS)
 
   // Arrêt gracieux : termine les requêtes et les jobs en cours avant de quitter
   const shutdown = async (signal) => {

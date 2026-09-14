@@ -24,7 +24,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { parseArgs }                from 'node:util';
 import { fileURLToPath }            from 'node:url';
-import { dirname, resolve }         from 'node:path';
+import { dirname }                  from 'node:path';
 import dotenv                       from 'dotenv';
 
 dotenv.config();
@@ -55,7 +55,6 @@ const SKIP_EMAIL = args['skip-email'];
 const DRY_RUN    = args['dry-run'];
 const CONTINUOUS = args.continuous;
 const WATCH_MS   = Math.max(5_000, parseInt(args['watch-ms'] ?? '60000'));
-const BASE_URL   = args.baseUrl;
 
 if (!USER_ID) {
   console.error('❌  --userId requis');

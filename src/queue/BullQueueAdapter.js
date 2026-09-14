@@ -18,7 +18,7 @@ const STATE_MAP = { // BullMQ → vocabulaire du port
 };
 
 export class BullQueueAdapter {
-  #type; #opts; #ready; #Queue; #Worker; #queue; #worker = null;
+  #type; #opts; #ready; #Worker; #queue; #worker = null;
 
   constructor(type, opts = {}) {
     this.#type = type;
@@ -30,7 +30,7 @@ export class BullQueueAdapter {
     const { Queue, Worker } = await import('bullmq');
     const { default: IORedis } = await import('ioredis');
     const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', { maxRetriesPerRequest: null });
-    this.#Queue = Queue; this.#Worker = Worker;
+    this.#Worker = Worker;
     this.#queue = new Queue(this.#type, { connection });
     this.#conn  = connection;
     logger.info(`[BullMQ] Queue "${this.#type}" prête`);

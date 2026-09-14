@@ -86,7 +86,7 @@ export function createInvoice({ user, type, description, amountTtc, currency = '
     return number;
   });
 
-  const number = tx();
+  tx();  // la valeur de retour (le numéro) n'est pas utilisée ici
   return db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
 }
 

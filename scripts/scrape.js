@@ -24,7 +24,6 @@ import { scrapeGoogleMaps, HIGH_VALUE_TARGETS } from '../src/scrapers/googleMaps
 import { Lead }             from '../src/db/models/Lead.js';
 import { runMigrations }    from '../src/db/database.js';
 import { scoreLead }        from '../src/services/sequenceService.js';
-import { logger }           from '../src/utils/logger.js';
 
 dotenv.config();
 

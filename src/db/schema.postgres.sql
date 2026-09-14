@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS leads (
   pipeline     TEXT NOT NULL DEFAULT 'nouveau',
   note         TEXT,
   email_source TEXT,
+  website      TEXT,
+  source       TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_leads_user_status  ON leads(user_id, status);
@@ -173,3 +175,21 @@ CREATE TABLE IF NOT EXISTS invoices (
   issued_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_invoices_user ON invoices(user_id, issued_at);
+
+CREATE TABLE IF NOT EXISTS email_bounces (
+  id         TEXT PRIMARY KEY,
+  email      TEXT NOT NULL,
+  type       TEXT NOT NULL CHECK(type IN ('hard','soft')),
+  code       TEXT,
+  diagnostic TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bounces_email ON email_bounces(email, created_at);
+
+CREATE TABLE IF NOT EXISTS events_daily (
+  day     TEXT NOT NULL,
+  user_id TEXT,
+  type    TEXT NOT NULL,
+  count   INTEGER NOT NULL,
+  PRIMARY KEY (day, user_id, type)
+);

@@ -1,4 +1,23 @@
-# Remplacez votre-domaine.fr par votre domaine. Caddy gère le TLS tout seul.
+# ─────────────────────────────────────────────────────────────────────────────
+# Caddy — remplacez les domaines ci-dessous par les vôtres. Le TLS est
+# automatique (Let's Encrypt), il n'y a rien à configurer pour les certificats.
+#
+# DEUX domaines, volontairement :
+#   1. l'application      → dashboard, API, envoi des emails
+#   2. les démos          → uniquement les sites générés
+#
+# Pourquoi séparer. D'abord la crédibilité : un prospect qui reçoit un lien
+# « votre-saas.fr/demos/plomberie-durand » voit un outil de prospection, pas son
+# site ; « plomberie-durand.vos-demos.fr » ressemble à ce qu'on lui propose.
+# Ensuite la délivrabilité : le domaine qui envoie vos emails ne doit pas être
+# celui qui héberge les liens cliqués, sinon un incident de réputation sur l'un
+# contamine l'autre — et vous perdez à la fois l'envoi ET les démos.
+#
+# Le second bloc est optionnel : sans lui et sans DEMO_HOST, tout continue de
+# fonctionner sur un seul domaine.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ① Application
 votre-domaine.fr {
 	encode gzip
 
@@ -16,3 +35,32 @@ votre-domaine.fr {
 		max_size 2MB
 	}
 }
+
+# ② Démos — à activer en même temps que DEMO_HOST / DEMO_BASE_URL dans .env
+#
+#   DEMO_HOST=vos-demos.fr
+#   DEMO_BASE_URL=https://vos-demos.fr
+#
+# L'app réécrit alors « /plomberie-durand » en « /demos/plomberie-durand ».
+# Après la bascule : node scripts/rebaseDemoUrls.js --dry-run puis sans l'option,
+# pour réaligner les démos déjà générées.
+#
+# vos-demos.fr {
+# 	encode gzip
+# 	reverse_proxy app:3000
+#
+# 	header {
+# 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+# 		X-Content-Type-Options "nosniff"
+# 		# Les démos ne doivent pas être indexées : elles reprennent le nom et les
+# 		# coordonnées d'une entreprise qui n'a rien demandé et ne doivent pas
+# 		# concurrencer son propre référencement. L'app pose déjà cet en-tête,
+# 		# celui-ci couvre aussi les éventuels assets.
+# 		X-Robots-Tag "noindex, nofollow"
+# 		-Server
+# 	}
+#
+# 	request_body {
+# 		max_size 2MB
+# 	}
+# }

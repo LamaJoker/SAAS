@@ -284,6 +284,52 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_invoices_user ON invoices(user_id, issued_at);
     `,
   },
+  {
+    version: 11,
+    name: 'bounces_retention_lead_website',
+    sql: `
+      -- Rebonds email. Un hard bounce non traité = adresse morte re-sollicitée,
+      -- c'est le moyen le plus rapide de faire brûler un domaine d'envoi.
+      CREATE TABLE IF NOT EXISTS email_bounces (
+        id         TEXT PRIMARY KEY,
+        email      TEXT NOT NULL,
+        type       TEXT NOT NULL CHECK(type IN ('hard','soft')),
+        code       TEXT,                 -- statut DSN (5.1.1) ou code SMTP (550)
+        diagnostic TEXT,                 -- extrait du Diagnostic-Code, tronqué
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_bounces_email ON email_bounces(email, created_at);
+
+      -- Agrégat quotidien : conserve l'historique analytique quand les events
+      -- bruts sont purgés (la table events grossit d'une ligne par ouverture,
+      -- clic et vue de démo).
+      CREATE TABLE IF NOT EXISTS events_daily (
+        day     TEXT NOT NULL,
+        user_id TEXT,
+        type    TEXT NOT NULL,
+        count   INTEGER NOT NULL,
+        PRIMARY KEY (day, user_id, type)
+      );
+
+      -- \`website\` était accepté par Lead.create() et silencieusement perdu :
+      -- la colonne n'existait pas.
+      ALTER TABLE leads ADD COLUMN website TEXT;
+    `,
+  },
+
+  {
+    version: 12,
+    name: 'lead_provenance',
+    sql: `
+      -- Base légale de la prospection B2B : l'intérêt légitime doit pouvoir se
+      -- PROUVER. Sans la source de collecte, impossible de justifier d'où vient
+      -- une donnée le jour où un prospect ou la CNIL le demande.
+      -- google_maps | import | manuel | api
+      ALTER TABLE leads ADD COLUMN source TEXT;
+      CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
+    `,
+  },
+
 ];
 
 export function runMigrations() {

@@ -2,13 +2,16 @@
  * generateBulk.js — Génère automatiquement les sites pour tous les leads "pending".
  *
  * Usage:
- *   node scripts/generateBulk.js --userId <USER_ID>
- *   node scripts/generateBulk.js --userId <USER_ID> --concurrency 2
- *   node scripts/generateBulk.js --userId <USER_ID> --dry-run
+ *   node scripts/generateBulk.js
+ *   node scripts/generateBulk.js --concurrency 2
+ *   node scripts/generateBulk.js --dry-run
+ *
+ * L'identité vient de SCRIPT_EMAIL / SCRIPT_PASSWORD (.env), pas d'un --userId :
+ * l'API n'accepte plus l'en-tête x-user-id.
  */
 
-import fetch from 'node:http';
 import { parseArgs } from 'node:util';
+import { createApiClient } from './lib/apiClient.js';
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -19,7 +22,6 @@ const DEFAULT_CONCURRENCY = parseInt(process.env.GEN_CONCURRENCY || '2');
 
 const { values: args } = parseArgs({
   options: {
-    userId:      { type: 'string' },
     baseUrl:     { type: 'string', default: DEFAULT_BASE_URL },
     concurrency: { type: 'string', default: String(DEFAULT_CONCURRENCY) },
     'dry-run':   { type: 'boolean', default: false },
@@ -28,69 +30,15 @@ const { values: args } = parseArgs({
   strict: false,
 });
 
-const USER_ID    = args.userId    || process.env.USER_ID;
 const BASE_URL   = args.baseUrl;
 const CONCURRENCY = Math.max(1, parseInt(args.concurrency) || DEFAULT_CONCURRENCY);
 const DRY_RUN    = args['dry-run'];
 const STATUS_FILTER = args.status;
 
-if (!USER_ID) {
-  console.error('❌  userId requis. Usage: node scripts/generateBulk.js --userId <ID>');
-  process.exit(1);
-}
-
-// ─── HTTP HELPERS ─────────────────────────────────────────────────────────────
-
-function httpRequest(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const urlObj   = new URL(url);
-    const lib      = urlObj.protocol === 'https:' ? (await import('node:https')).default : (await import('node:http')).default;
-    const reqOpts  = {
-      hostname: urlObj.hostname,
-      port:     urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-      path:     urlObj.pathname + urlObj.search,
-      method:   options.method || 'GET',
-      headers:  {
-        'Content-Type': 'application/json',
-        'x-user-id':    USER_ID,
-        ...(options.headers || {}),
-      },
-    };
-
-    const req = lib.request(reqOpts, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          if (res.statusCode >= 400) reject(new Error(data.error || `HTTP ${res.statusCode}`));
-          else resolve(data.data);
-        } catch {
-          reject(new Error(`Invalid JSON response: ${body.slice(0, 100)}`));
-        }
-      });
-    });
-
-    req.on('error', reject);
-    if (options.body) req.write(options.body);
-    req.end();
-  });
-}
-
-// Simpler version using fetch (Node 18+)
-async function apiFetch(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': USER_ID,
-      ...(options.headers || {}),
-    },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data.data;
-}
+// ─── API ─────────────────────────────────────────────────────────────────────
+// Client authentifié (login → Bearer), initialisé au démarrage de main().
+let apiFetch;
+let userId;
 
 // ─── CONCURRENCY POOL ─────────────────────────────────────────────────────────
 
@@ -113,10 +61,12 @@ async function runWithConcurrency(tasks, limit, fn) {
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  ({ apiFetch, userId } = await createApiClient({ baseUrl: BASE_URL }));
+
   console.log('─'.repeat(60));
   console.log('🚀 AutoDemo — Génération en masse');
   console.log(`   Base URL   : ${BASE_URL}`);
-  console.log(`   User ID    : ${USER_ID}`);
+  console.log(`   Compte     : ${userId}`);
   console.log(`   Concurrence: ${CONCURRENCY}`);
   console.log(`   Filtre     : statut="${STATUS_FILTER}"`);
   console.log(`   Mode       : ${DRY_RUN ? '🔍 DRY RUN (aucune génération)' : '⚡ PRODUCTION'}`);
