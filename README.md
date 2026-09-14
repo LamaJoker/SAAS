@@ -2,6 +2,7 @@
 
 > Génère automatiquement des sites vitrines pour PME locales, puis les démarche par séquence email — de la prospection au paiement.
 
+[![Démo](https://img.shields.io/badge/d%C3%A9mo-en%20ligne-22c55e)](https://autodemo-saas.onrender.com)
 [![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-180%20passing-brightgreen)](#-tests)
 [![Evals](https://img.shields.io/badge/evals-7%20crit%C3%A8res%20automatis%C3%A9s-8b5cf6)](evals/)
@@ -16,13 +17,20 @@ AutoDemo est une plateforme d'acquisition B2B de bout en bout : elle **scrape** 
 
 ## 👀 Voir le résultat
 
-**[→ Exemples de sites générés](https://lamajoker.github.io/SAAS/)** — trois sorties réelles du générateur (un template chacun), produites à partir d'une seule ligne de données : nom, activité, ville.
+**[→ Application en ligne](https://autodemo-saas.onrender.com)** — créez un compte et générez un site en trois clics. Aucune clé API requise.
 
-Pour faire tourner l'application complète sans clé API ni configuration :
+**[→ Exemples de sites générés](https://lamajoker.github.io/SAAS/)** — trois sorties réelles du générateur, un template chacun, produites à partir d'une seule ligne de données : nom, activité, ville.
+
+> **À savoir sur la démo.** Elle tourne sur l'offre gratuite de Render : le
+> service s'endort après 15 minutes d'inactivité, la première requête peut donc
+> mettre une minute. Le disque est éphémère — les comptes créés disparaissent au
+> redéploiement. Le contenu vient du générateur de repli (`AI_MOCK_MODE=true`),
+> pas du modèle, et l'envoi d'emails est désactivé : une démo publique ne doit
+> pas écrire à de vraies adresses.
+
+Pour déployer votre propre instance :
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/LamaJoker/SAAS)
-
-Le blueprint démarre en mode simulation (`AI_MOCK_MODE=true`) : le dashboard, la génération de sites, le CRM et les analytics fonctionnent sans dépendance externe.
 
 ---
 
