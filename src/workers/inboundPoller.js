@@ -23,7 +23,9 @@ async function pollOnce(ImapFlow) {
       for await (const msg of client.fetch({ seen: false }, { envelope: true, source: true })) {
         const from    = msg.envelope?.from?.[0]?.address || '';
         const subject = msg.envelope?.subject || '';
-        const text    = msg.source ? msg.source.toString('utf8').slice(0, 2000) : '';
+        // 8 000 : la partie message/delivery-status d'un rebond arrive après
+        // les en-têtes et le corps lisible ; 2 000 la tronquait systématiquement.
+        const text    = msg.source ? msg.source.toString('utf8').slice(0, 8000) : '';
         await handleInboundEmail({ from, subject, text });
         await client.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
       }

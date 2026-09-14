@@ -20,6 +20,7 @@ export function errorHandler(err, req, res, next) {
     path:    req.path,
     method:  req.method,
     userId:  req.userId,
+    reqId:   req.id,
   });
   // Erreur non opérationnelle (bug) → alerte le webhook si configuré
   reportError(`${req.method} ${req.path}`, err);
@@ -29,5 +30,8 @@ export function errorHandler(err, req, res, next) {
     success: false,
     error:   isProd ? 'Erreur interne du serveur' : err.message,
     code:    'INTERNAL_ERROR',
+    // Donné au client pour qu'un signalement pointe directement la bonne ligne
+    // de log : un grep au lieu d'une recherche à l'heure approximative.
+    requestId: req.id,
   });
 }

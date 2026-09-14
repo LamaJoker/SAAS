@@ -6,8 +6,20 @@ import { logger }        from '../../utils/logger.js';
 
 const router = express.Router();
 
-// Un seul scrape Google Maps à la fois par process (Playwright est lourd)
-let scrapeInProgress = false;
+/**
+ * Verrou de scraping.
+ *
+ * Avant : un booléen global. Le scrape d'un compte renvoyait donc 409 à TOUS
+ * les autres — « Un scraping est déjà en cours » alors que l'utilisateur n'en
+ * avait lancé aucun. Défaut d'isolation multi-tenant, invisible en solo,
+ * bloquant dès le deuxième client.
+ *
+ * Après : un verrou par compte (un utilisateur ne se double pas lui-même) plus
+ * un plafond global, parce que la vraie contrainte est la mémoire : chaque
+ * scrape lance un Chromium.
+ */
+const inProgress = new Set();
+const MAX_CONCURRENT = Math.max(1, parseInt(process.env.SCRAPE_MAX_CONCURRENT ?? '2', 10));
 
 /**
  * POST /scrape — Lance un scraping Google Maps "activité + ville".
@@ -18,6 +30,7 @@ let scrapeInProgress = false;
  * les leads apparaissent au fil de l'eau dans l'onglet Leads.
  */
 router.post('/', async (req, res, next) => {
+  let locked = false;
   try {
     const activity = sanitizeInput(req.body.activity ?? '', 100);
     const city     = sanitizeInput(req.body.city     ?? '', 100);
@@ -28,8 +41,11 @@ router.post('/', async (req, res, next) => {
       return next(Errors.badRequest('activity et city requis'));
     }
 
-    if (scrapeInProgress) {
-      return next(Errors.conflict('Un scraping est déjà en cours — réessayez dans quelques minutes'));
+    if (inProgress.has(req.userId)) {
+      return next(Errors.conflict('Un scraping est déjà en cours sur votre compte — réessayez dans quelques minutes'));
+    }
+    if (inProgress.size >= MAX_CONCURRENT) {
+      return next(Errors.conflict('Trop de scrapings simultanés sur le serveur — réessayez dans quelques minutes'));
     }
 
     // Playwright est optionnel : import paresseux pour ne pas casser le boot
@@ -45,7 +61,8 @@ router.post('/', async (req, res, next) => {
     }
 
     const userId = req.userId;
-    scrapeInProgress = true;
+    inProgress.add(userId);
+    locked = true;
     res.status(202).json({
       success: true,
       data: {
@@ -77,17 +94,25 @@ router.post('/', async (req, res, next) => {
       } catch (err) {
         logger.error('[Scrape] Échec', { activity, city, error: err.message });
       } finally {
-        scrapeInProgress = false;
+        inProgress.delete(userId);
       }
     });
   } catch (err) {
-    scrapeInProgress = false;
+    // Ne libère que si CETTE requête avait pris le verrou : sinon une erreur de
+    // validation libérerait le scrape d'une autre requête du même compte.
+    if (req.userId && locked) inProgress.delete(req.userId);
     next(err);
   }
 });
 
 router.get('/status', (req, res) => {
-  res.json({ success: true, data: { inProgress: scrapeInProgress } });
+  res.json({
+    success: true,
+    data: {
+      inProgress: inProgress.has(req.userId),   // le sien, pas celui des autres
+      serverBusy: inProgress.size >= MAX_CONCURRENT,
+    },
+  });
 });
 
 export default router;

@@ -2,16 +2,13 @@ import { getDb }     from '../database.js';
 import { randomUUID } from 'crypto';
 
 export const Lead = {
-  // NOTE: `website` est accepté par compatibilité mais PAS persisté — la table
-  // leads n'a pas cette colonne. À trancher : ajouter la colonne, ou retirer le
-  // champ du contrat d'API (cf. audit, lot 2).
-  create({ userId, name, activity, city, email, phone, website: _website = null, emailSource = null }) {
+  create({ userId, name, activity, city, email, phone, website = null, emailSource = null }) {
     const db = getDb();
     const id = randomUUID();
     db.prepare(`
-      INSERT INTO leads (id, user_id, name, activity, city, email, phone, email_source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, userId, name, activity, city, email || null, phone || null, emailSource);
+      INSERT INTO leads (id, user_id, name, activity, city, email, phone, email_source, website)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, name, activity, city, email || null, phone || null, emailSource, website || null);
     return this.findById(id);
   },
 

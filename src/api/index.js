@@ -32,6 +32,8 @@ import { startAllWorkers, stopAllWorkers } from '../workers/index.js';
 import { startSequenceWorker }    from '../workers/sequenceWorker.js';
 import { startInboundPoller, stopInboundPoller } from '../workers/inboundPoller.js';
 import { startBackupScheduler }   from '../services/backupService.js';
+import { startRetentionScheduler } from '../services/retentionService.js';
+import { requestId }             from './middleware/requestId.js';
 import { join } from 'path';
 
 export function createApp() {
@@ -78,11 +80,13 @@ export function createApp() {
     next();
   });
 
+  app.use(requestId);
+
   app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
       logger.info(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - start}ms`, {
-        userId: req.userId,
+        userId: req.userId, reqId: req.id,
       });
     });
     next();
@@ -171,6 +175,7 @@ export function startServer() {
   // Poller IMAP des réponses entrantes (dormant si non configuré)
   startInboundPoller().catch(() => {});
   startBackupScheduler(); // backup SQLite quotidien (data/backups/, 7 conservés)
+  startRetentionScheduler(); // agrégation + purge des events (RETENTION_DAYS)
 
   // Arrêt gracieux : termine les requêtes et les jobs en cours avant de quitter
   const shutdown = async (signal) => {

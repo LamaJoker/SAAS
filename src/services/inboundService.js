@@ -12,6 +12,7 @@ import { smtpPool } from './smtpPool.js';
 import { sanitize } from '../utils/utils.js';
 import { logger }   from '../utils/logger.js';
 import { config }   from '../config/config.js';
+import { parseBounce, handleBounce } from './bounceService.js';
 
 /** Extrait l'adresse d'un champ "Nom <email@x.fr>" ou "email@x.fr". Testable. */
 export function extractEmailAddress(from) {
@@ -43,9 +44,18 @@ async function notifyOwnerOfReply(owner, lead, subject, snippet) {
 /**
  * Traite une réponse entrante : stoppe la séquence, passe les leads
  * correspondants en « rappeler », trace l'événement, notifie le propriétaire.
- * @returns {Promise<{ matched: number }>}
+ * @returns {Promise<{ matched: number, bounce?: object }>}
  */
 export async function handleInboundEmail({ from, subject = '', text = '' }) {
+  // Un rapport de non-remise n'est pas une réponse : il vient de MAILER-DAEMON,
+  // ne correspond à aucun lead, et était jusqu'ici simplement ignoré — l'adresse
+  // morte restait sollicitée à chaque relance.
+  const bounce = parseBounce({ from, subject, text });
+  if (bounce.isBounce) {
+    const res = await handleBounce(bounce);
+    return { matched: 0, bounce: res };
+  }
+
   const email = extractEmailAddress(from);
   if (!email) return { matched: 0 };
 
