@@ -18,7 +18,8 @@
     "lint:fix": "eslint . --fix",
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm test",
-    "audit:optional": "npm i --no-save --no-audit stripe playwright bullmq ioredis imapflow twilio pg && npm audit"
+    "audit:optional": "npm i --no-save --no-audit stripe playwright bullmq ioredis imapflow twilio pg && npm audit",
+    "demos:rebase": "node scripts/rebaseDemoUrls.js"
   },
   "engines": {
     "node": ">=18"

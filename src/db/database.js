@@ -317,6 +317,19 @@ const MIGRATIONS = [
     `,
   },
 
+  {
+    version: 12,
+    name: 'lead_provenance',
+    sql: `
+      -- Base légale de la prospection B2B : l'intérêt légitime doit pouvoir se
+      -- PROUVER. Sans la source de collecte, impossible de justifier d'où vient
+      -- une donnée le jour où un prospect ou la CNIL le demande.
+      -- google_maps | import | manuel | api
+      ALTER TABLE leads ADD COLUMN source TEXT;
+      CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
+    `,
+  },
+
 ];
 
 export function runMigrations() {

@@ -3,6 +3,8 @@ import { repo }         from '../../db/repo.js';
 import { leadTimeline } from '../../db/queries.js';
 import { Errors }       from '../../utils/AppError.js';
 import { validateLead } from '../middleware/validate.js';
+import { requireAdmin } from '../middleware/auth.js';
+import { eraseProspect } from '../../services/prospectPrivacyService.js';
 
 const router = express.Router();
 
@@ -12,6 +14,28 @@ router.post('/', validateLead, async (req, res, next) => {
     const lead = await repo.leads.create({ userId: req.userId, name, activity, city, email, phone });
     res.status(201).json({ success: true, data: lead });
   } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /leads/erase — Droit à l'effacement d'un prospect (RGPD art. 17).
+ *
+ * Admin uniquement : une demande d'effacement arrive par email ou courrier et
+ * doit être vérifiée par un humain avant exécution. L'ouvrir en self-service
+ * permettrait d'effacer les leads d'un concurrent en connaissant son adresse.
+ *
+ * Portée volontairement globale (tous comptes) : une entreprise qui demande à
+ * disparaître ne va pas répéter sa demande à chacun de vos clients.
+ */
+router.post('/erase', requireAdmin, async (req, res, next) => {
+  try {
+    const email = String(req.body?.email ?? '').trim();
+    if (!email) return next(Errors.badRequest('email requis'));
+    const result = await eraseProspect(email);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err.message === 'Adresse email invalide') return next(Errors.badRequest(err.message));
     next(err);
   }
 });

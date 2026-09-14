@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS leads (
   note         TEXT,
   email_source TEXT,
   website      TEXT,
+  source       TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_leads_user_status  ON leads(user_id, status);

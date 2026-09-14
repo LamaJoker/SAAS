@@ -11,8 +11,52 @@ import { config }  from '../config/config.js';
 import { logger }  from '../utils/logger.js';
 import { mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
+import { exec } from 'node:child_process';
 
 const KEEP = parseInt(process.env.BACKUP_KEEP ?? '7');
+
+/**
+ * Commande exécutée après chaque backup réussi. Le chemin du fichier est exposé
+ * dans la variable d'environnement $BACKUP_FILE (jamais concaténé dans la
+ * commande : un nom de fichier ne peut donc pas s'y injecter).
+ *
+ * Pourquoi ce n'est pas un client S3 intégré : un backup qui reste sur le même
+ * disque que la base ne protège de rien — ni d'une panne disque, ni d'un rm -rf,
+ * ni d'un ransomware. Mais coder un client de stockage dans l'app ajouterait une
+ * dépendance lourde et des identifiants à gérer, pour une tâche que rclone, aws
+ * ou scp font mieux. La commande est donc déléguée, et chiffrée côté opérateur.
+ *
+ * Exemple (chiffrement puis envoi) :
+ *   BACKUP_POST_CMD='gpg --batch --yes -r backup@vous.fr -e "$BACKUP_FILE" && rclone copy "$BACKUP_FILE".gpg remote:saas-backups && rm -f "$BACKUP_FILE".gpg'
+ */
+const POST_CMD = process.env.BACKUP_POST_CMD ?? '';
+const POST_CMD_TIMEOUT_MS = parseInt(process.env.BACKUP_POST_TIMEOUT_MS ?? '300000');
+
+/**
+ * Exécute la commande d'externalisation. Ne jette jamais : un envoi hors-site
+ * raté ne doit pas empêcher le backup local, qui lui a déjà réussi. L'échec est
+ * loggé en erreur, donc relayé vers ERROR_WEBHOOK_URL s'il est configuré.
+ */
+function runPostCommand(dest) {
+  if (!POST_CMD) return Promise.resolve(false);
+
+  return new Promise(resolve => {
+    exec(POST_CMD, {
+      timeout: POST_CMD_TIMEOUT_MS,
+      shell: '/bin/sh',
+      env: { ...process.env, BACKUP_FILE: dest },
+    }, (err, stdout, stderr) => {
+      if (err) {
+        logger.error('[Backup] Externalisation échouée', {
+          error: err.message, stderr: String(stderr).slice(0, 500),
+        });
+        return resolve(false);
+      }
+      logger.info('[Backup] Externalisation réussie', { dest });
+      resolve(true);
+    });
+  });
+}
 
 export async function backupDatabase() {
   const backupDir = join(dirname(config.paths.db), 'backups');
@@ -23,6 +67,9 @@ export async function backupDatabase() {
 
   await getDb().backup(dest);
   logger.info('[Backup] Base sauvegardée', { dest });
+
+  // Externalisation : le chemin est passé via $BACKUP_FILE.
+  await runPostCommand(dest);
 
   // Rotation : ne garder que les KEEP plus récents
   const files = readdirSync(backupDir)

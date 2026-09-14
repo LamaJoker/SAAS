@@ -2,13 +2,13 @@ import { getDb }     from '../database.js';
 import { randomUUID } from 'crypto';
 
 export const Lead = {
-  create({ userId, name, activity, city, email, phone, website = null, emailSource = null }) {
+  create({ userId, name, activity, city, email, phone, website = null, emailSource = null, source = 'manuel' }) {
     const db = getDb();
     const id = randomUUID();
     db.prepare(`
-      INSERT INTO leads (id, user_id, name, activity, city, email, phone, email_source, website)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, userId, name, activity, city, email || null, phone || null, emailSource, website || null);
+      INSERT INTO leads (id, user_id, name, activity, city, email, phone, email_source, website, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, name, activity, city, email || null, phone || null, emailSource, website || null, source);
     return this.findById(id);
   },
 

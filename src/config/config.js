@@ -52,6 +52,16 @@ export const config = {
     port:    parseInt(optional('PORT', '3000')),
     baseUrl: optional('BASE_URL', 'http://localhost:3000'),
     env:     optional('NODE_ENV', 'development'),
+
+    // Domaine dédié aux démos. Deux raisons de le séparer du domaine applicatif :
+    //   1. crédibilité — un prospect qui reçoit « votre-saas.fr/demos/plombier-x »
+    //      voit un outil de prospection, pas son site ;
+    //   2. délivrabilité — le domaine qui ENVOIE les emails ne doit pas être le
+    //      même que celui qui héberge les liens cliqués, sinon un incident de
+    //      réputation sur l'un contamine l'autre.
+    // Vide = tout reste sur baseUrl (comportement actuel, rien ne change).
+    demoHost:    optional('DEMO_HOST', ''),                  // ex. demos.mon-domaine.fr
+    demoBaseUrl: optional('DEMO_BASE_URL', ''),              // ex. https://demos.mon-domaine.fr
   },
 
   rateLimit: {
