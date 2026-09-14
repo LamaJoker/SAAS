@@ -20,8 +20,17 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      - name: Lint
+        run: npm run lint
       - name: Tests
         run: npm test
+      - name: Évaluation du contenu généré
+        # Mode mock : gratuit et déterministe. Vérifie le harnais et le contenu
+        # de repli, qui est publié tel quel sous le nom d'entreprises réelles
+        # chaque fois qu'un appel au modèle échoue. Sort en échec sous 70 %.
+        run: npm run eval
+        env:
+          AI_MOCK_MODE: "true"
       - name: Audit sécurité (prod)
         run: npm audit --omit=dev --audit-level=high
         continue-on-error: true

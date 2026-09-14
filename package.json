@@ -19,7 +19,8 @@
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm test",
     "audit:optional": "npm i --no-save --no-audit stripe playwright bullmq ioredis imapflow twilio pg && npm audit",
-    "demos:rebase": "node scripts/rebaseDemoUrls.js"
+    "demos:rebase": "node scripts/rebaseDemoUrls.js",
+    "eval": "node evals/run.js"
   },
   "engines": {
     "node": ">=18"

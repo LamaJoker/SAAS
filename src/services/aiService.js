@@ -1,39 +1,53 @@
 import { config } from '../config/config.js';
 import { logger } from '../utils/logger.js';
 import { repairContent } from './aiSchema.js';
+import { getPrompt, ACTIVE_VERSION } from '../ai/prompts/index.js';
+import { recordAiCall } from '../ai/usage.js';
 
 /**
- * Données mock réalistes utilisées en mode simulation ou en fallback
+ * Contenu de repli, utilisé en mode simulation ET en secours quand l'appel au
+ * modèle échoue.
+ *
+ * ⚠️ Ce contenu est PUBLIÉ sous le nom d'une vraie entreprise. Il ne doit donc
+ * contenir aucune affirmation vérifiable : ni ancienneté, ni certification, ni
+ * garantie, ni chiffre. La version précédente promettait « 10+ années
+ * d'expérience », « équipe certifiée » et « satisfaction garantie ou remboursé »
+ * pour des entreprises dont on ne sait rien — c'est de la publicité trompeuse,
+ * et c'est le prospect qui en répond. Le harnais d'évaluation (`npm run eval`)
+ * vérifie cette contrainte à chaque exécution.
+ *
+ * Les longueurs respectent les mêmes limites que celles imposées au modèle :
+ * heroTitle ≤ 60, heroSubtitle ≤ 120, cta ≤ 50.
  */
 const MOCK_TEMPLATE = {
-  heroTitle: '{{name}} — Votre expert local à {{city}}',
-  heroSubtitle: 'Des services professionnels et personnalisés au cœur de {{city}}. Découvrez pourquoi nos clients nous font confiance depuis des années.',
+  heroTitle: '{{name}}, {{activity}} à {{city}}',
+  heroSubtitle: 'Un interlocuteur proche de chez vous à {{city}}, à l\'écoute de votre besoin.',
   services: [
-    'Conseil personnalisé et accompagnement sur mesure',
-    'Intervention rapide et réactive dans {{city}} et ses environs',
-    'Devis gratuit sans engagement sous 24h',
+    'Un premier échange pour comprendre votre besoin avant toute proposition',
+    'Une intervention soignée, expliquée à chaque étape',
+    'Un devis clair et détaillé, sans engagement',
   ],
   benefits: [
-    '10+ années d\'expérience dans notre domaine',
-    'Équipe certifiée et formée aux dernières normes',
-    'Satisfaction client garantie ou remboursé',
-    'Disponible 6j/7 pour vos urgences',
+    'Un seul interlocuteur du début à la fin',
+    'Des explications claires, sans jargon',
+    'Un travail soigné et un chantier laissé propre',
+    'Une disponibilité réelle pour répondre à vos questions',
   ],
   testimonials: [
     {
-      text: 'Service impeccable, équipe professionnelle et réactive. Je recommande vivement !',
-      author: 'Marie L., cliente depuis 3 ans',
+      text: 'On m\'a expliqué ce qui allait être fait avant de commencer. Ça change tout.',
+      author: 'Marie L.',
     },
     {
-      text: 'Résultat parfait, délais respectés et prix honnêtes. On revient sans hésitation.',
-      author: 'Thomas B., artisan local',
+      text: 'Ponctuel, soigneux, et le devis annoncé correspondait à la facture.',
+      author: 'Thomas B.',
     },
     {
-      text: 'Enfin un professionnel qui explique clairement et fait un travail de qualité.',
-      author: 'Isabelle M., Résidente de {{city}}',
+      text: 'J\'ai apprécié de pouvoir poser mes questions sans me sentir pressée.',
+      author: 'Isabelle M., {{city}}',
     },
   ],
-  cta: 'Demandez votre devis gratuit dès maintenant',
+  cta: 'Demandez votre devis gratuit',
 };
 
 /**
@@ -60,56 +74,6 @@ function generateMockContent(lead) {
 }
 
 /**
- * Construit le prompt IA optimisé pour la conversion locale
- */
-function buildPrompt(lead) {
-  return `Tu es un expert en copywriting pour PME locales françaises.
-
-Génère du contenu marketing percutant pour le site vitrine de cette entreprise :
-- Nom : ${lead.name}
-- Activité : ${lead.activity}
-- Ville : ${lead.city}
-
-Le contenu doit :
-- Être orienté conversion locale (attirer des clients de ${lead.city} et environs)
-- Utiliser un ton professionnel mais chaleureux
-- Mettre en avant la proximité et l'expertise locale
-- Créer de la confiance et pousser à l'action
-
-Réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication :
-{
-  "heroTitle": "titre accrocheur avec nom entreprise (max 60 chars)",
-  "heroSubtitle": "sous-titre convaincant mettant en avant valeur unique (max 120 chars)",
-  "services": [
-    "service 1 avec bénéfice client concret",
-    "service 2 avec bénéfice client concret",
-    "service 3 avec bénéfice client concret"
-  ],
-  "benefits": [
-    "avantage différenciateur 1",
-    "avantage différenciateur 2",
-    "avantage différenciateur 3",
-    "avantage différenciateur 4"
-  ],
-  "testimonials": [
-    {
-      "text": "témoignage réaliste et spécifique à l'activité",
-      "author": "prénom + initiale, rôle ou situation"
-    },
-    {
-      "text": "deuxième témoignage différent",
-      "author": "prénom + initiale, rôle ou situation"
-    },
-    {
-      "text": "troisième témoignage avec résultat concret",
-      "author": "prénom + initiale, habitant(e) de ${lead.city}"
-    }
-  ],
-  "cta": "appel à l'action percutant (max 50 chars)"
-}`;
-}
-
-/**
  * Extrait l'objet JSON d'une réponse IA potentiellement bavarde :
  * tolère les code fences markdown et le texte avant/après l'objet.
  * Exporté pour les tests.
@@ -127,28 +91,14 @@ export function extractJson(text) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-function buildMessages(lead, correctionHint) {
-  const messages = [
-    {
-      role: 'system',
-      content: 'Tu es un expert copywriter. Tu réponds uniquement en JSON valide, jamais en markdown.',
-    },
-    { role: 'user', content: buildPrompt(lead) },
-  ];
-  if (correctionHint) {
-    messages.push({
-      role: 'user',
-      content: `Ta réponse précédente était invalide (${correctionHint}). Renvoie UNIQUEMENT l'objet JSON corrigé, sans aucun texte autour.`,
-    });
-  }
-  return messages;
-}
-
 /**
  * Appelle l'API IA réelle. Le timeout (config.generation.timeoutMs) garantit
  * qu'un fournisseur qui pend ne bloque jamais un worker.
  */
-async function callAIAPI(lead, { correctionHint = null } = {}) {
+async function callAIAPI(lead, { correctionHint = null, promptVersion = ACTIVE_VERSION } = {}) {
+  const prompt = getPrompt(promptVersion);
+  const startedAt = Date.now();
+
   const response = await fetch(`${config.ai.baseUrl}/chat/completions`, {
     method: 'POST',
     signal: AbortSignal.timeout(config.generation.timeoutMs),
@@ -158,7 +108,7 @@ async function callAIAPI(lead, { correctionHint = null } = {}) {
     },
     body: JSON.stringify({
       model: config.ai.model,
-      messages: buildMessages(lead, correctionHint),
+      messages: prompt.build(lead, { correctionHint }),
       max_tokens: config.ai.maxTokens,
       temperature: config.ai.temperature,
     }),
@@ -175,7 +125,15 @@ async function callAIAPI(lead, { correctionHint = null } = {}) {
     throw new Error('Réponse IA vide ou malformée');
   }
 
-  return extractJson(rawContent);
+  return {
+    content: extractJson(rawContent),
+    // `usage` est renvoyé par les API compatibles OpenAI. Absent chez certains
+    // fournisseurs : on enregistre alors 0 token, et cost_known signale que le
+    // coût n'est pas estimable plutôt que de le faire passer pour nul.
+    tokensIn:  data.usage?.prompt_tokens ?? 0,
+    tokensOut: data.usage?.completion_tokens ?? 0,
+    durationMs: Date.now() - startedAt,
+  };
 }
 
 /**
@@ -188,38 +146,62 @@ async function callAIAPI(lead, { correctionHint = null } = {}) {
  *   4. dans tous les cas, validation Zod champ par champ : les champs invalides
  *      sont comblés par le mock, les bons champs IA sont conservés
  */
-export async function generateContent(lead) {
+export async function generateContent(lead, { promptVersion = ACTIVE_VERSION, userId = null } = {}) {
   if (!lead?.name || !lead?.activity || !lead?.city) {
     throw new Error(`Lead invalide: champs name, activity, city requis`);
   }
 
   const mock = generateMockContent(lead);
+  const telemetry = {
+    model: config.ai.model, promptVersion,
+    userId, leadId: lead.id ?? null,
+  };
 
   if (config.ai.mockMode || !config.ai.apiKey || config.ai.apiKey === 'sk-...') {
     logger.info(`[IA] Mode mock pour "${lead.name}"`);
+    recordAiCall({ ...telemetry, model: 'mock', outcome: 'mock' });
     return mock;
   }
 
-  logger.info(`[IA] Génération contenu pour "${lead.name}" via ${config.ai.model}`);
+  logger.info(`[IA] Génération contenu pour "${lead.name}" via ${config.ai.model} (prompt ${promptVersion})`);
 
-  let raw;
+  let call;
+  let attempt = 1;
   try {
-    raw = await callAIAPI(lead);
+    call = await callAIAPI(lead, { promptVersion });
   } catch (firstErr) {
     logger.warn(`[IA] Premier appel échoué (${firstErr.message}) — retentative corrective`);
+    attempt = 2;
     try {
-      raw = await callAIAPI(lead, { correctionHint: firstErr.message });
+      call = await callAIAPI(lead, { correctionHint: firstErr.message, promptVersion });
     } catch (secondErr) {
       logger.error(`[IA] Double échec — mock complet pour "${lead.name}"`, { error: secondErr.message });
+      recordAiCall({ ...telemetry, outcome: 'failed', attempt: 2 });
       return mock;
     }
   }
 
-  const { content, fallbacks } = repairContent(raw, mock);
+  const { content, fallbacks } = repairContent(call.content, mock);
   if (fallbacks.length) {
     logger.warn(`[IA] Champs comblés par mock: ${fallbacks.join(', ')}`, { lead: lead.name });
   }
-  logger.info(`[IA] Contenu généré pour "${lead.name}"`);
+
+  const cost = recordAiCall({
+    ...telemetry,
+    tokensIn: call.tokensIn, tokensOut: call.tokensOut,
+    durationMs: call.durationMs, attempt,
+    outcome: fallbacks.length ? 'repaired' : 'ok',
+    fallbacks,
+  });
+
+  logger.info(`[IA] Contenu généré pour "${lead.name}"`, {
+    tokens: call.tokensIn + call.tokensOut,
+    costCents: cost?.known ? cost.cents : null,
+    ms: call.durationMs,
+  });
   return content;
 }
+
+/** Contenu mock exposé pour les évaluations et les tests. */
+export { generateMockContent };
 

@@ -27,7 +27,7 @@ export default [
 
   // ─── Code serveur (Node, ESM) ─────────────────────────────────────────────
   {
-    files: ['src/**/*.js', 'scripts/**/*.js'],
+    files: ['src/**/*.js', 'scripts/**/*.js', 'evals/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

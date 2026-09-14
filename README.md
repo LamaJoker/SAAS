@@ -3,7 +3,8 @@
 > Génère automatiquement des sites vitrines pour PME locales, puis les démarche par séquence email — de la prospection au paiement.
 
 [![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-146%20passing-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-175%20passing-brightgreen)](#-tests)
+[![Evals](https://img.shields.io/badge/evals-7%20crit%C3%A8res%20automatis%C3%A9s-8b5cf6)](evals/)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-%E2%86%92%20PostgreSQL--ready-003B57?logo=sqlite&logoColor=white)](#-base-de-données)
@@ -22,6 +23,39 @@ Pour faire tourner l'application complète sans clé API ni configuration :
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/LamaJoker/SAAS)
 
 Le blueprint démarre en mode simulation (`AI_MOCK_MODE=true`) : le dashboard, la génération de sites, le CRM et les analytics fonctionnent sans dépendance externe.
+
+---
+
+## 🤖 Ingénierie du contenu généré
+
+Le contenu produit par le modèle n'est pas vérifié à l'œil : il est **mesuré**.
+
+```bash
+npm run eval                        # 7 critères sur 10 cas — gratuit, en CI
+npm run eval -- --live --runs 5     # vrai modèle, variance, coût affiché
+npm run eval -- --versions v1,v2    # compare deux prompts
+```
+
+| Brique | Rôle |
+| --- | --- |
+| [`evals/`](evals/) | 7 scoreurs déterministes, 10 cas, comparaison de versions, garde CI à 70 % |
+| [`src/ai/prompts/`](src/ai/prompts/) | Prompts versionnés et figés — on en ajoute, on ne les édite pas |
+| [`src/ai/usage.js`](src/ai/usage.js) | Tokens, latence, coût et version de prompt enregistrés par appel |
+| [`src/ai/cost.js`](src/ai/cost.js) | Tarifs datés ; un modèle hors table est marqué « non estimé », jamais 0 € |
+
+Le critère au poids le plus élevé est **« aucun fait inventé »**. Le modèle
+reçoit trois informations — nom, activité, ville — donc toute affirmation
+vérifiable qu'il produit est fabriquée. Ces pages étant publiées sous le nom
+d'entreprises réelles, « certifié RGE » ou « 15 ans d'expérience » y sont de la
+publicité trompeuse.
+
+> **Ce que le harnais a trouvé à sa première exécution :** le contenu de repli —
+> écrit à la main, utilisé en mode démo et à chaque échec du modèle — promettait
+> « 10+ années d'expérience », « équipe certifiée » et « satisfaction garantie ou
+> remboursé ». Score 69 % → **92 %** après correction. Le défaut n'était pas dans
+> le modèle, il était dans le code, et il était en production.
+
+Détail des critères et de leur pondération : [`evals/README.md`](evals/README.md).
 
 ---
 
@@ -59,11 +93,13 @@ saas/
 │   ├── workers/            # queue : génération, envoi email, scraping, séquence, poller inbound
 │   ├── queue/              # abstraction queue (SQLite par défaut, BullMQ optionnel)
 │   ├── db/                 # database.js (SQLite + migrations), repo/queries async, schéma PostgreSQL
+│   ├── ai/                 # prompts versionnés, tarifs, télémétrie des appels
 │   ├── email/              # façade de rendu + variantes + footer de désinscription
 │   └── utils/              # password (scrypt), tokens HMAC, logger, AppError
+├── evals/                  # harnais d'évaluation du contenu généré (7 scoreurs, 10 cas)
 ├── templates/              # 3 templates de sites vitrines
 ├── frontend/               # dashboard + landing (HTML/CSS/JS statiques, CSP stricte)
-├── tests/                  # 19 fichiers Vitest + supertest + pg-mem (146 tests)
+├── tests/                  # 20 fichiers Vitest + supertest + pg-mem (175 tests)
 ├── docs/                   # décisions d'ingénierie, déploiement, délivrabilité, scaling
 └── deploy/                 # systemd + Docker + Caddy
 ```
@@ -122,7 +158,7 @@ npm run make-admin
 ## 🧪 Tests
 
 ```bash
-npm test           # 146 tests, 19 fichiers (Vitest)
+npm test           # 175 tests, 20 fichiers (Vitest)
 npm run test:watch
 npm run test:coverage
 npm run lint       # 0 erreur

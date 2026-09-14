@@ -330,6 +330,35 @@ const MIGRATIONS = [
     `,
   },
 
+  {
+    version: 13,
+    name: 'ai_calls',
+    sql: `
+      -- Journal des appels au modèle. L'IA est le premier poste de coût variable
+      -- du produit : sans mesure, impossible de savoir si un crédit vendu couvre
+      -- la génération qu'il paie. Enregistre aussi la version de prompt utilisée,
+      -- pour rattacher une sortie douteuse au prompt qui l'a produite.
+      CREATE TABLE IF NOT EXISTS ai_calls (
+        id             TEXT PRIMARY KEY,
+        user_id        TEXT,
+        lead_id        TEXT,
+        model          TEXT NOT NULL,
+        prompt_version TEXT NOT NULL,
+        tokens_in      INTEGER NOT NULL DEFAULT 0,
+        tokens_out     INTEGER NOT NULL DEFAULT 0,
+        cost_cents     REAL NOT NULL DEFAULT 0,
+        cost_known     INTEGER NOT NULL DEFAULT 1,  -- 0 = tarif du modèle inconnu
+        duration_ms    INTEGER,
+        attempt        INTEGER NOT NULL DEFAULT 1,  -- 2 = retentative corrective
+        outcome        TEXT NOT NULL,               -- ok | repaired | failed | mock
+        fallbacks      TEXT,                        -- champs comblés par le mock
+        created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_calls_created ON ai_calls(created_at);
+      CREATE INDEX IF NOT EXISTS idx_ai_calls_user    ON ai_calls(user_id, created_at);
+    `,
+  },
+
 ];
 
 export function runMigrations() {

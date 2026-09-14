@@ -193,3 +193,21 @@ CREATE TABLE IF NOT EXISTS events_daily (
   count   INTEGER NOT NULL,
   PRIMARY KEY (day, user_id, type)
 );
+
+CREATE TABLE IF NOT EXISTS ai_calls (
+  id             TEXT PRIMARY KEY,
+  user_id        TEXT,
+  lead_id        TEXT,
+  model          TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  tokens_in      INTEGER NOT NULL DEFAULT 0,
+  tokens_out     INTEGER NOT NULL DEFAULT 0,
+  cost_cents     REAL NOT NULL DEFAULT 0,
+  cost_known     INTEGER NOT NULL DEFAULT 1,
+  duration_ms    INTEGER,
+  attempt        INTEGER NOT NULL DEFAULT 1,
+  outcome        TEXT NOT NULL,
+  fallbacks      TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_calls_created ON ai_calls(created_at);
