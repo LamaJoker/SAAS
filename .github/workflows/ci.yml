@@ -32,8 +32,10 @@ jobs:
         env:
           AI_MOCK_MODE: "true"
       - name: Audit sécurité (prod)
-        run: npm audit --omit=dev --audit-level=high
-        continue-on-error: true
+        # Bloquant désormais : les dépendances de production sont à zéro
+        # vulnérabilité, autant que ça le reste. Les outils de développement
+        # (vitest, vite, esbuild) ne tournent pas en production et sont exclus.
+        run: npm audit --omit=dev --audit-level=moderate
 
   docker:
     name: Build image Docker
