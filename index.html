@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoDemo — exemples de sites générés</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { color-scheme: dark }
+  * { box-sizing: border-box }
+  body { margin:0; background:#0b1120; color:#e2e8f0;
+         font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif }
+  .wrap { max-width:940px; margin:0 auto; padding:64px 24px 96px }
+  h1 { font-size:2rem; margin:0 0 8px; letter-spacing:-.02em }
+  .sub { color:#94a3b8; margin:0 0 40px; max-width:62ch }
+  .grid { display:grid; gap:20px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)) }
+  a.card { display:block; padding:24px; border-radius:12px; text-decoration:none;
+           background:#111c33; border:1px solid #1e293b; color:inherit;
+           transition:border-color .15s, transform .15s }
+  a.card:hover { border-color:#2563eb; transform:translateY(-2px) }
+  .card h2 { margin:0 0 4px; font-size:1.05rem; color:#fff }
+  .meta { color:#64748b; font-size:.85rem }
+  .tpl { display:inline-block; margin-top:12px; font-size:.75rem; color:#93c5fd;
+         background:#1e3a8a33; border:1px solid #1e40af; padding:2px 8px; border-radius:99px }
+  .note { margin-top:48px; padding:20px; border-left:3px solid #2563eb;
+          background:#111c33; border-radius:0 8px 8px 0; color:#cbd5e1; font-size:.95rem }
+  .note strong { color:#fff }
+  footer { margin-top:40px; color:#64748b; font-size:.9rem }
+  footer a { color:#93c5fd }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AutoDemo — exemples de sites générés</h1>
+  <p class="sub">
+    Trois sites produits par le générateur à partir d'une seule ligne de données :
+    nom de l'entreprise, activité, ville. Le contenu est rédigé par un modèle de
+    langage puis validé contre un schéma avant écriture, et le rendu s'appuie sur
+    un des trois templates disponibles.
+  </p>
+
+  <div class="grid">
+    <a class="card" href="plomberie-durand-besancon/">
+      <h2>Plomberie Durand</h2>
+      <div class="meta">Plombier · Besançon</div>
+      <span class="tpl">template moderne</span>
+    </a>
+    <a class="card" href="le-comptoir-des-saveurs-lyon/">
+      <h2>Le Comptoir des Saveurs</h2>
+      <div class="meta">Restaurant · Lyon</div>
+      <span class="tpl">template elegant</span>
+    </a>
+    <a class="card" href="garage-martin-dijon/">
+      <h2>Garage Martin</h2>
+      <div class="meta">Garagiste · Dijon</div>
+      <span class="tpl">template vibrant</span>
+    </a>
+  </div>
+
+  <div class="note">
+    <strong>Aperçu statique.</strong> Ces pages sont les fichiers réellement produits
+    par le générateur, servis tels quels. Il n'y a pas d'API derrière : les
+    formulaires de contact sont neutralisés, et le suivi des vues et des clics —
+    présent dans l'application — ne fonctionne pas ici.
+    Les entreprises citées sont fictives.
+  </div>
+
+  <footer>
+    Code source, architecture et décisions techniques :
+    <a href="https://github.com/LamaJoker/SAAS">github.com/LamaJoker/SAAS</a>
+  </footer>
+</div>
+</body>
+</html>
