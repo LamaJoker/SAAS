@@ -4,7 +4,7 @@
 
 [![Démo](https://img.shields.io/badge/d%C3%A9mo-en%20ligne-22c55e)](https://autodemo-saas.onrender.com)
 [![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-241%20passing-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-256%20passing-brightgreen)](#-tests)
 [![Evals](https://img.shields.io/badge/evals-7%20crit%C3%A8res%20automatis%C3%A9s-8b5cf6)](evals/)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com)
@@ -79,7 +79,7 @@ Le code seul ne dit pas pourquoi il est écrit ainsi. [**`docs/DECISIONS.md`**](
 | --- | --- |
 | **Acquisition** | Scraper Google Maps (Playwright), enrichissement email, déduplication des leads par tenant |
 | **Génération** | 3 templates de sites (`moderne`, `elegant`, `vibrant`), génération IA avec validation de schéma (Zod), écriture atomique |
-| **Outreach** | Séquence J0 / J+3 / J+7 (arrêtée dès qu'un humain reprend le lead), désinscription en un clic (RFC 8058), variantes A/B réelles, canal WhatsApp optionnel, signature DKIM, warmup progressif, filtre Apple Mail Privacy |
+| **Outreach** | Séquence J0 / J+3 / J+7 en un seul fil de conversation (arrêtée dès qu'un humain reprend le lead), désinscription en un clic (RFC 8058), variantes A/B réelles, canal WhatsApp optionnel, signature DKIM, warmup progressif, filtre Apple Mail Privacy |
 | **CRM** | Pipeline 6 statuts, timeline des interactions, hot leads triés par urgence, actions un-clic depuis l'email de notif (token HMAC) |
 | **Réponses entrantes** | Webhook + poller IMAP optionnel → arrêt auto de la séquence, passage en « à rappeler » |
 | **Paiement** | Stripe (packs de crédits + abonnements), factures séquentielles avec TVA (domestique / autoliquidation UE / export), portail client |
@@ -107,7 +107,7 @@ saas/
 ├── evals/                  # harnais d'évaluation du contenu généré (7 scoreurs, 10 cas)
 ├── templates/              # 3 templates de sites vitrines
 ├── frontend/               # dashboard + landing (HTML/CSS/JS statiques, CSP stricte)
-├── tests/                  # 36 fichiers Vitest + supertest + pg-mem (241 tests)
+├── tests/                  # 37 fichiers Vitest + supertest + pg-mem (256 tests)
 ├── docs/                   # décisions d'ingénierie, déploiement, délivrabilité, scaling
 └── deploy/                 # systemd + Docker + Caddy
 ```
@@ -166,7 +166,7 @@ npm run make-admin
 ## 🧪 Tests
 
 ```bash
-npm test           # 241 tests, 36 fichiers (Vitest)
+npm test           # 256 tests, 37 fichiers (Vitest)
 npm run test:watch
 npm run test:coverage
 npm run lint       # 0 erreur
