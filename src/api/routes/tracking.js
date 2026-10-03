@@ -51,14 +51,21 @@ router.get('/open/:token', (req, res) => {
   });
 });
 
+// Le prospect a cliqué dans un email : quoi qu'il arrive côté base, il doit
+// atterrir quelque part — jamais une erreur JSON ni une requête bloquée.
 router.get('/click/:clickToken', async (req, res) => {
   const { clickToken } = req.params;
   const ip = req.ip;
   const ua = req.headers['user-agent'] || '';
 
-  const registered = await clickRegistered(clickToken);
+  let registered;
+  try {
+    registered = await clickRegistered(clickToken);
+  } catch (err) {
+    logger.error('[Tracking] Lecture du lien échouée', { error: err.message });
+  }
   if (!registered?.url) {
-    return res.redirect(302, process.env.BASE_URL || 'http://localhost:3000');
+    return res.redirect(302, config.server.baseUrl);
   }
 
   setImmediate(async () => {
