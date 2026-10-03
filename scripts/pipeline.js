@@ -4,7 +4,14 @@
  * Ce script orchestre tout le workflow en séquence :
  *   1. Importer/Vérifier des leads depuis un fichier JSON
  *   2. Générer les sites pour tous les leads "pending"
- *   3. Envoyer les emails de prospection aux leads avec email
+ *   3. Faire le point sur la prospection
+ *
+ * Les emails ne partent PAS d'ici : chaque génération inscrit le lead dans la
+ * séquence du serveur (J0, J+3, J+7), seule propriétaire de l'outreach —
+ * liste de désinscription, plafond, warmup, désinscription en un clic.
+ * Ce script envoyait auparavant ses propres emails, sans aucun de ces
+ * contrôles : à chaque exécution, tous les prospects (désinscrits compris)
+ * recevaient un email en plus de celui de la séquence.
  *
  * Usage:
  *   node scripts/pipeline.js --file ./data/leads.json
@@ -16,17 +23,15 @@
  *   (identité : SCRIPT_EMAIL / SCRIPT_PASSWORD dans .env)
  *   --file       Fichier JSON de leads à importer (optionnel si leads déjà en base)
  *   --no-import  Sauter l'étape d'import (utiliser les leads existants)
- *   --skip-email Ne pas envoyer les emails
+ *   --skip-email Sans effet (conservé pour compatibilité) : l'envoi relève du serveur
  *   --dry-run    Simuler sans rien écrire/envoyer
  *   --concurrency Nombre de générations en parallèle (défaut: 2)
- *   --delay      Délai entre emails en ms (défaut: 2000)
  *   --baseUrl    URL de l'API (défaut: http://localhost:3000)
  */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { createApiClient } from './lib/apiClient.js';
-import nodemailer from 'nodemailer';
 
 // ─── ARG PARSING ─────────────────────────────────────────────────────────────
 
@@ -37,7 +42,6 @@ const { values: args } = parseArgs({
     'skip-email':{ type: 'boolean', default: false },
     'dry-run':   { type: 'boolean', default: false },
     concurrency: { type: 'string', default: '2' },
-    delay:       { type: 'string', default: '2000' },
     baseUrl:     { type: 'string', default: process.env.BASE_URL || 'http://localhost:3000' },
   },
   strict: false,
@@ -49,7 +53,6 @@ const NO_IMPORT   = args['no-import'];
 const SKIP_EMAIL  = args['skip-email'];
 const DRY_RUN     = args['dry-run'];
 const CONCURRENCY = Math.max(1, parseInt(args.concurrency) || 2);
-const EMAIL_DELAY = Math.max(0, parseInt(args.delay) || 2000);
 
 // ─── LOGGER ───────────────────────────────────────────────────────────────────
 
@@ -66,6 +69,7 @@ const log = {
 // Client authentifié (login → Bearer), initialisé au démarrage de main().
 // L'en-tête x-user-id n'est plus lu par l'API depuis la migration JWT.
 let apiFetch;
+let apiFetchAll;
 let userId;
 
 // ─── CONCURRENCY POOL ─────────────────────────────────────────────────────────
@@ -85,7 +89,6 @@ async function pool(items, limit, fn) {
   return results;
 }
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ─── STEP 1: IMPORT LEADS ────────────────────────────────────────────────────
 
@@ -154,10 +157,10 @@ async function stepImport() {
 async function stepGenerate() {
   log.step(2, 'Génération des sites');
 
-  // Fetch pending leads
+  // Toutes les pages : /leads est paginé (50 par défaut)
   let leads;
   try {
-    leads = await apiFetch('/leads');
+    leads = await apiFetchAll('/leads');
   } catch (err) {
     log.error(`Impossible de récupérer les leads: ${err.message}`);
     process.exit(1);
@@ -206,132 +209,40 @@ async function stepGenerate() {
   return stats;
 }
 
-// ─── STEP 3: SEND EMAILS ─────────────────────────────────────────────────────
+// ─── STEP 3: PROSPECTION ─────────────────────────────────────────────────────
 
-async function stepSendEmails() {
-  log.step(3, 'Envoi des emails de prospection');
+/**
+ * Point sur la prospection. Aucun envoi ici : la génération a inscrit chaque
+ * lead joignable dans la séquence du serveur, qui envoie J0 puis les relances
+ * en respectant désinscriptions, plafond d'envois et warmup.
+ */
+async function stepOutreach() {
+  log.step(3, 'Prospection');
 
   if (SKIP_EMAIL) {
-    log.info('Envoi d\'emails ignoré (--skip-email)');
-    return { sent: 0, skipped: 0, failed: 0 };
+    log.warn('--skip-email est sans effet : l\'envoi est géré par la séquence du serveur.');
   }
 
-  // Setup SMTP
-  let transporter;
-  if (!DRY_RUN) {
-    const host = process.env.SMTP_HOST;
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-
-    if (!host || !user || !pass) {
-      log.warn('Variables SMTP manquantes (SMTP_HOST, SMTP_USER, SMTP_PASS).');
-      log.warn('Envoi des emails ignoré. Configurez votre .env pour activer cette étape.');
-      return { sent: 0, skipped: 0, failed: 0 };
-    }
-
-    try {
-      transporter = nodemailer.createTransport({
-        host,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_PORT === '465',
-        auth: { user, pass },
-      });
-      await transporter.verify();
-      log.success('Connexion SMTP OK');
-    } catch (err) {
-      log.error(`Connexion SMTP échouée: ${err.message}`);
-      log.warn('Envoi des emails ignoré.');
-      return { sent: 0, skipped: 0, failed: 0 };
-    }
-  }
-
-  // Fetch sites
-  let sites;
+  let leads;
   try {
-    sites = await apiFetch('/sites');
+    leads = await apiFetchAll('/leads');
   } catch (err) {
-    log.error(`Impossible de récupérer les sites: ${err.message}`);
-    return { sent: 0, skipped: 0, failed: 0 };
+    log.error(`Impossible de récupérer les leads: ${err.message}`);
+    return { reachable: 0, total: 0 };
   }
 
-  const withEmail = sites.filter(s => s.lead_email && s.lead_email.includes('@'));
-  log.info(`Sites avec adresse email: ${withEmail.length} / ${sites.length}`);
-
-  if (withEmail.length === 0) {
-    log.warn('Aucun lead avec email. Ajoutez le champ "email" lors de l\'import.');
-    return { sent: 0, skipped: 0, failed: 0 };
-  }
-
-  const FROM   = process.env.SMTP_FROM  || process.env.SMTP_USER;
-  const SENDER = process.env.SMTP_SENDER_NAME || 'AutoDemo';
-  const stats  = { sent: 0, skipped: 0, failed: 0 };
-
-  for (const site of withEmail) {
-    const name = site.lead_name || 'Votre entreprise';
-    const city = site.city || '';
-
-    if (DRY_RUN) {
-      log.info(`[DRY RUN] Email → ${site.lead_email} | ${name} | ${site.url}`);
-      stats.sent++;
-      continue;
-    }
-
-    try {
-      await transporter.sendMail({
-        from:    `"${SENDER}" <${FROM}>`,
-        to:      site.lead_email,
-        subject: `${name} — Votre site démo est prêt`,
-        text:    `Bonjour,\n\nVotre démo est disponible : ${site.url}\n\nBonne journée,\n${SENDER}`,
-        html:    buildProspectEmail({ name, city, url: site.url, sender: SENDER }),
-      });
-      log.success(`Email envoyé → ${site.lead_email}`);
-      stats.sent++;
-    } catch (err) {
-      log.error(`Échec envoi → ${site.lead_email}: ${err.message}`);
-      stats.failed++;
-    }
-
-    if (EMAIL_DELAY > 0) await sleep(EMAIL_DELAY);
-  }
-
-  log.info(`Emails terminés — ${stats.sent} envoyés, ${stats.failed} échoués, ${stats.skipped} ignorés`);
-  return stats;
-}
-
-// ─── EMAIL TEMPLATE ───────────────────────────────────────────────────────────
-
-function buildProspectEmail({ name, city, url, sender }) {
-  return `<!DOCTYPE html>
-<html lang="fr"><head><meta charset="UTF-8">
-<style>
-  body{margin:0;padding:0;background:#f4f4f7;font-family:Arial,sans-serif}
-  .wrap{max-width:580px;margin:0 auto;padding:20px}
-  .card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  .head{background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:28px;text-align:center;border-radius:8px 8px 0 0}
-  .head h1{color:#fff;font-size:20px;margin:0}
-  .body{padding:28px;color:#374151;font-size:14px;line-height:1.7}
-  .cta{text-align:center;margin:24px 0}
-  .cta a{background:#6366f1;color:#fff;text-decoration:none;padding:13px 30px;border-radius:6px;font-weight:bold}
-  .foot{padding:16px 28px;border-top:1px solid #f0f0f0;font-size:12px;color:#9ca3af}
-</style>
-</head><body><div class="wrap"><div class="card">
-<div class="head"><h1>⚡ Votre site démo est prêt</h1></div>
-<div class="body">
-  <p>Bonjour,</p>
-  <p>Nous avons créé une démo personnalisée pour <strong>${name}</strong>${city ? ` à ${city}` : ''}.</p>
-  <p>Ce site est optimisé pour convertir vos prospects locaux en clients.</p>
-  <div class="cta"><a href="${url}">🌐 Voir ma démo gratuite</a></div>
-  <p>Répondez à cet email pour en discuter.</p>
-  <p>Bonne journée,<br><strong>${sender}</strong></p>
-</div>
-<div class="foot">Pour ne plus recevoir nos emails, répondez avec "Désinscription".</div>
-</div></div></body></html>`;
+  const withSite  = leads.filter(l => l.status === 'done');
+  const reachable = withSite.filter(l => l.email && l.email.includes('@')).length;
+  log.info(`Prospects avec site et email : ${reachable} / ${withSite.length}`);
+  log.info('Envoi pris en charge par la séquence du serveur (J0, J+3, J+7) si SMTP y est configuré.');
+  log.info('Suivi : onglet Analytics du dashboard.');
+  return { reachable, total: withSite.length };
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  ({ apiFetch, userId } = await createApiClient({ baseUrl: BASE_URL }));
+  ({ apiFetch, apiFetchAll, userId } = await createApiClient({ baseUrl: BASE_URL }));
 
   const startTime = Date.now();
 
@@ -347,7 +258,7 @@ async function main() {
   // Run pipeline
   const importStats   = await stepImport();
   const generateStats = await stepGenerate();
-  const emailStats    = await stepSendEmails();
+  const outreachStats = await stepOutreach();
 
   // Final summary
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -362,14 +273,12 @@ async function main() {
   console.log(`\n   Étape 2 — Génération:`);
   console.log(`     Réussis  : ${generateStats.success}`);
   console.log(`     Échoués  : ${generateStats.failed}`);
-  console.log(`\n   Étape 3 — Emails:`);
-  console.log(`     Envoyés  : ${emailStats.sent}`);
-  console.log(`     Échoués  : ${emailStats.failed}`);
-  console.log(`     Ignorés  : ${emailStats.skipped}`);
+  console.log(`\n   Étape 3 — Prospection (séquence du serveur):`);
+  console.log(`     Joignables par email : ${outreachStats.reachable} / ${outreachStats.total}`);
   console.log(`\n   ⏱️  Durée totale: ${duration}s`);
   console.log('═'.repeat(60));
 
-  if (generateStats.failed > 0 || emailStats.failed > 0) {
+  if (generateStats.failed > 0) {
     console.log('\n⚠️  Des erreurs sont survenues. Vérifiez les logs ci-dessus.\n');
   } else {
     console.log('\n✅ Pipeline terminé avec succès.\n');
