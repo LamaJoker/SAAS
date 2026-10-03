@@ -119,6 +119,18 @@ function isBlacklisted(email) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * La séquence froide ne concerne que les prospects que personne n'a encore
+ * traités. Dès que l'utilisateur fait avancer le lead dans le CRM (appelé,
+ * intéressé, à rappeler, converti, perdu), un humain a repris la relation :
+ * une relance automatique (« Dernier message… ») envoyée à un client qui vient
+ * de signer, ou à quelqu'un qui a dit non, coûte la vente — et pour un refus,
+ * c'est une sollicitation après opposition.
+ */
+export function isHandledByHuman(lead) {
+  return !!lead.pipeline && lead.pipeline !== 'nouveau';
+}
+
+/**
  * Choisit le canal d'outreach d'un lead :
  *   - 'email'    si une adresse est disponible (canal principal)
  *   - 'whatsapp' si pas d'email mais un téléphone ET WhatsApp activé
@@ -258,6 +270,12 @@ export async function processSequence() {
       const site = await repo.sites.findById(entry.site_id);
       const lead = await repo.leads.findById(entry.lead_id);
       if (!site || !lead) { done(db, entry.id); stats.skipped++; continue; }
+      if (isHandledByHuman(lead)) {
+        done(db, entry.id);
+        logger.info('[Sequence] Lead suivi manuellement — séquence close', { leadId: lead.id, pipeline: lead.pipeline });
+        stats.skipped++;
+        continue;
+      }
 
       const channel = entry.channel || 'email';
 
