@@ -203,7 +203,7 @@ async function sendEmailStep(db, entry, site, lead, senderName) {
   });
 
   const sendResult = await smtpPool.send({
-    to: lead.email, subject, text, html,
+    to: lead.email, subject, text, html, fromName: senderName,
     headers: {
       'X-Variant':        variantId,
       'Precedence':       'bulk',
@@ -262,7 +262,7 @@ export async function processSequence() {
   let emailBudget = dailyEmailCap() - sentTodayCount();
 
   const stats = { sent: 0, errors: 0, skipped: 0 };
-  const senderName = process.env.SMTP_SENDER_NAME || 'AutoDemo';
+  const senderName = config.email.senderName;
 
   for (const entry of due) {
     try {

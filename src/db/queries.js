@@ -292,6 +292,12 @@ export async function recordInboundReply(leadId, userId, subject, snippet) {
 }
 
 // ── Emailing : cadence + traçage des envois ─────────────────────────────────
+/** Entrée de séquence encore active pour ce site (envoi automatique à venir). */
+export async function activeSequenceForSite(siteId) {
+  return getDb().prepare(
+    "SELECT next_send_at FROM email_sequence WHERE site_id = ? AND status = 'pending'"
+  ).get(siteId) ?? null;
+}
 export async function countEmailsForSite(siteId) {
   return getDb().prepare('SELECT COUNT(*) as n FROM email_sends WHERE site_id = ?').get(siteId)?.n ?? 0;
 }

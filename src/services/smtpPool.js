@@ -104,10 +104,13 @@ class SmtpPool {
 
     const entry = this.#pick();
     const { t, cfg } = entry;
-    const from = mailOptions.from ?? `"${cfg.senderName ?? 'AutoDemo'}" <${cfg.user}>`;
+    // fromName : nom affiché imposé par l'appelant, identique quel que soit le
+    // compte choisi (l'adresse, elle, reste celle du compte authentifié).
+    const { fromName, ...options } = mailOptions;
+    const from = options.from ?? `"${fromName ?? cfg.senderName ?? 'AutoDemo'}" <${cfg.user}>`;
 
     try {
-      const result = await t.sendMail({ ...mailOptions, from });
+      const result = await t.sendMail({ ...options, from });
       const stats  = this.#hourly.get(cfg.user);
       if (stats) stats.sent++;
       logger.info('[SmtpPool] Envoyé', { to: mailOptions.to, via: cfg.user, messageId: result.messageId });

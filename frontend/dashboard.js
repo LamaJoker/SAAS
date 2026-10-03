@@ -670,7 +670,10 @@
       loading.classList.remove('hidden');
       errEl.classList.add('hidden');
       try {
-        await apiFetch(`/resend/${pendingSiteId}`, { method: 'POST' });
+        const out = await apiFetch(`/resend/${pendingSiteId}`, { method: 'POST' });
+        // Réponse 200 ne veut pas dire « envoyé » : le serveur peut refuser
+        // (désabonné, plafond atteint, relance auto programmée…).
+        if (!out.sent) throw new Error(out.message || 'Email non envoyé.');
         document.getElementById('resendModal').classList.add('hidden');
         showToast('✉️ Email envoyé !', 'success');
       } catch (err) {
