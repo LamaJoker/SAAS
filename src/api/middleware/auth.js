@@ -35,9 +35,19 @@ export async function authenticate(req, res, next) {
   if (!token) {
     return next(Errors.unauthorized('Token manquant'));
   }
-  try {
-    const payload = jwt.verify(token, config.security.jwtSecret);
 
+  // Seule la vérification du JWT relève du 401. Une panne de base pendant les
+  // contrôles suivants est une erreur serveur (500) : la traduire en 401
+  // faisait déconnecter l'utilisateur par le dashboard à chaque SQLITE_BUSY.
+  let payload;
+  try {
+    payload = jwt.verify(token, config.security.jwtSecret);
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') return next(Errors.unauthorized('Token expiré'));
+    return next(Errors.unauthorized('Token invalide'));
+  }
+
+  try {
     // Token explicitement révoqué (logout)
     if (payload.jti && await isTokenRevoked(payload.jti)) {
       return next(Errors.unauthorized('Session terminée'));
@@ -55,8 +65,7 @@ export async function authenticate(req, res, next) {
     req.tokenExp = payload.exp ?? null;
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') return next(Errors.unauthorized('Token expiré'));
-    next(Errors.unauthorized('Token invalide'));
+    next(err);
   }
 }
 
