@@ -1,4 +1,6 @@
-    const API_BASE = window.API_BASE || 'http://localhost:3000';
+    // API servie par la même origine que le frontend : chemins relatifs.
+    // window.API_BASE reste une surcharge possible (API sur un autre domaine).
+    const API_BASE = window.API_BASE ?? '';
 
     // Déjà connecté → dashboard. Le cookie HttpOnly fait foi côté serveur ;
     // 'user' n'est qu'un indice d'affichage (pas un secret, pas le JWT).
