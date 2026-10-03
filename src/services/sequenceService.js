@@ -17,9 +17,8 @@ import { repo }             from '../db/repo.js';
 import { logger }           from '../utils/logger.js';
 import { randomBytes }      from 'crypto';
 import { config }           from '../config/config.js';
-import { buildUnsubToken }  from '../utils/unsubToken.js';
 import { FOLLOWUP_IDS, VARIANT_IDS } from '../email/index.js';
-import { renderEmail }      from '../email/render.js';
+import { renderEmail, unsubscribeHeaders } from '../email/render.js';
 import { sendWhatsAppDemo, sendWhatsAppFollowup } from './whatsappService.js';
 
 // ─── Warmup (montée en charge progressive de l'envoi email) ─────────────────────
@@ -208,7 +207,7 @@ async function sendEmailStep(db, entry, site, lead, senderName) {
     headers: {
       'X-Variant':        variantId,
       'Precedence':       'bulk',
-      'List-Unsubscribe': `<${config.server.baseUrl}/unsubscribe/${buildUnsubToken(lead.email)}>`,
+      ...unsubscribeHeaders(lead.email),
     },
   });
 

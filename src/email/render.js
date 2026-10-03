@@ -6,12 +6,12 @@
  * tous les deux par ici : une seule source de vérité pour les templates.
  */
 import { getVariant }      from './index.js';
-import { buildUnsubToken } from '../utils/unsubToken.js';
+import { buildUnsubUrl }   from '../utils/unsubToken.js';
 import { config }          from '../config/config.js';
 
 export function buildUnsubFooter(email) {
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || '';
-  const url  = `${config.server.baseUrl}/unsubscribe/${buildUnsubToken(email)}`;
+  const url  = buildUnsubUrl(email);
   // Identité + adresse postale de l'expéditeur : obligation légale du cold email
   // (CAN-SPAM ; bonne pratique RGPD). Affichées si renseignées en config.
   const sender  = [config.legal.company, config.legal.address].filter(Boolean).join(' · ');
@@ -22,6 +22,21 @@ export function buildUnsubFooter(email) {
     <a href="${url}" style="color:#999">Se désabonner</a> ·
     <a href="mailto:${from}?subject=Désabonnement" style="color:#999">Par email</a>${postal}
   </p>`;
+}
+
+/**
+ * En-têtes de désinscription d'un email de prospection.
+ *
+ * List-Unsubscribe-Post (RFC 8058) : le client mail (Gmail, Yahoo, Apple Mail)
+ * affiche un bouton « Se désabonner » natif qui POSTe directement sur l'URL.
+ * Gmail et Yahoo l'exigent des expéditeurs en volume depuis 2024 ; sans lui,
+ * le destinataire qui veut partir n'a qu'un bouton à portée : « Spam ».
+ */
+export function unsubscribeHeaders(email) {
+  return {
+    'List-Unsubscribe':      `<${buildUnsubUrl(email)}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
 }
 
 /**

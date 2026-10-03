@@ -10,10 +10,8 @@ import { createTrackingPixel, wrapLink } from './trackingService.js';
 import { countEmailsForSite, lastEmailDaysAgo, isEmailBlacklisted, recordEmailSent, sitesForEmailQueue } from '../db/queries.js';
 import { logger }           from '../utils/logger.js';
 import { randomBytes }      from 'crypto';
-import { config }           from '../config/config.js';
-import { buildUnsubToken }  from '../utils/unsubToken.js';
 import { VARIANT_IDS, getVariant } from '../email/index.js';
-import { renderEmail }      from '../email/render.js';
+import { renderEmail, unsubscribeHeaders } from '../email/render.js';
 
 const SENDER_NAMES = ['Alex', 'Marc', 'Thomas', 'Julie', 'Sarah'];
 
@@ -76,7 +74,7 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
       'X-Entity-ID':      lead.id,
       'X-Send-ID':        sendId,
       'Precedence':       'bulk',
-      'List-Unsubscribe': `<${config.server.baseUrl}/unsubscribe/${buildUnsubToken(lead.email)}>`,
+      ...unsubscribeHeaders(lead.email),
     },
   });
 

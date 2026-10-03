@@ -17,6 +17,11 @@ export function buildUnsubToken(email) {
   return `${payload}.${sign(payload)}`;
 }
 
+/** URL de désinscription d'une adresse — seule construction de cette URL. */
+export function buildUnsubUrl(email) {
+  return `${config.server.baseUrl}/unsubscribe/${buildUnsubToken(email)}`;
+}
+
 /**
  * Vérifie la signature et retourne l'email, ou null si le token est invalide.
  */
