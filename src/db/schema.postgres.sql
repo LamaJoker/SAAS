@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS email_sends (
   variant_id  TEXT NOT NULL,
   message_id  TEXT NOT NULL,
   is_followup INTEGER NOT NULL DEFAULT 0,
+  subject     TEXT,                     -- objet envoyé (fil des relances)
+  sent_via    TEXT,                     -- compte SMTP utilisé
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_es_site ON email_sends(site_id);

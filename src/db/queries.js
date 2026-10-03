@@ -310,9 +310,19 @@ export async function lastEmailDaysAgo(siteId) {
 export async function isEmailBlacklisted(email) {
   return !!getDb().prepare('SELECT 1 FROM email_blacklist WHERE email = ?').get(email.toLowerCase());
 }
-export async function recordEmailSent({ siteId, leadId, variantId, messageId, isFollowup = false }) {
-  getDb().prepare('INSERT INTO email_sends (id, site_id, lead_id, variant_id, message_id, is_followup) VALUES (?,?,?,?,?,?)')
-    .run(randomBytes(8).toString('hex'), siteId, leadId, variantId, messageId, isFollowup ? 1 : 0);
+export async function recordEmailSent({ siteId, leadId, variantId, messageId, isFollowup = false, subject = null, sentVia = null }) {
+  getDb().prepare(`
+    INSERT INTO email_sends (id, site_id, lead_id, variant_id, message_id, is_followup, subject, sent_via)
+    VALUES (?,?,?,?,?,?,?,?)
+  `).run(randomBytes(8).toString('hex'), siteId, leadId, variantId, messageId ?? '', isFollowup ? 1 : 0, subject, sentVia);
+}
+
+/** Emails déjà envoyés pour ce site, du plus ancien au plus récent (fil des relances). */
+export async function emailThreadForSite(siteId) {
+  return getDb().prepare(`
+    SELECT message_id, subject, sent_via FROM email_sends
+    WHERE site_id = ? ORDER BY created_at ASC, rowid ASC
+  `).all(siteId);
 }
 export async function emailStats(userId, days) {
   const db = getDb();

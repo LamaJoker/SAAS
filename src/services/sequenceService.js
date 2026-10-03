@@ -19,6 +19,8 @@ import { randomBytes }      from 'crypto';
 import { config }           from '../config/config.js';
 import { FOLLOWUP_IDS, VARIANT_IDS } from '../email/index.js';
 import { renderEmail, unsubscribeHeaders } from '../email/render.js';
+import { buildThread }      from '../email/thread.js';
+import { emailThreadForSite, recordEmailSent } from '../db/queries.js';
 import { sendWhatsAppDemo, sendWhatsAppFollowup } from './whatsappService.js';
 import { parseDbDate } from '../utils/utils.js';
 
@@ -203,17 +205,25 @@ async function sendEmailStep(db, entry, site, lead, senderName) {
     pixelUrl, trackedUrl, toEmail: lead.email,
   });
 
+  // Relance = réponse dans le fil du premier email (cf. email/thread.js)
+  const thread = buildThread(await emailThreadForSite(site.id), subject);
+
   const sendResult = await smtpPool.send({
-    to: lead.email, subject, text, html, fromName: senderName,
+    to: lead.email, subject: thread.subject, text, html,
+    fromName: senderName, preferUser: thread.preferSender,
     headers: {
       'X-Variant':        variantId,
       'Precedence':       'bulk',
       ...unsubscribeHeaders(lead.email),
+      ...thread.headers,
     },
   });
 
-  db.prepare('INSERT INTO email_sends (id, site_id, lead_id, variant_id, message_id, is_followup) VALUES (?,?,?,?,?,?)')
-    .run(randomBytes(8).toString('hex'), site.id, lead.id, variantId, sendResult.messageId ?? '', entry.step > 0 ? 1 : 0);
+  await recordEmailSent({
+    siteId: site.id, leadId: lead.id, variantId,
+    messageId: sendResult.messageId, isFollowup: entry.step > 0,
+    subject: thread.subject, sentVia: sendResult.sentVia,
+  });
 
   advance(db, entry);
   logger.info(`[Sequence] Email step ${entry.step}: ${lead.email} | variant=${variantId}`);

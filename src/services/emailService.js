@@ -7,12 +7,13 @@
  */
 import { smtpPool }         from './smtpPool.js';
 import { createTrackingPixel, wrapLink } from './trackingService.js';
-import { countEmailsForSite, lastEmailDaysAgo, isEmailBlacklisted, recordEmailSent, activeSequenceForSite } from '../db/queries.js';
+import { countEmailsForSite, lastEmailDaysAgo, isEmailBlacklisted, recordEmailSent, activeSequenceForSite, emailThreadForSite } from '../db/queries.js';
 import { config }           from '../config/config.js';
 import { logger }           from '../utils/logger.js';
 import { randomBytes }      from 'crypto';
 import { VARIANT_IDS, getVariant } from '../email/index.js';
 import { renderEmail, unsubscribeHeaders } from '../email/render.js';
+import { buildThread }      from '../email/thread.js';
 
 /** Plafond d'emails par prospect, toutes sources confondues (séquence + manuel). */
 export const MAX_EMAILS_PER_SITE = 3;
@@ -80,14 +81,19 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
     toEmail: lead.email,
   });
 
+  // Une relance manuelle s'inscrit dans le fil existant (cf. email/thread.js)
+  const thread = buildThread(await emailThreadForSite(site.id), subject);
+
   const result = await smtpPool.send({
-    to: lead.email, subject, text, html, fromName: sender,
+    to: lead.email, subject: thread.subject, text, html,
+    fromName: sender, preferUser: thread.preferSender,
     headers: {
       'X-Variant':        variantId,
       'X-Entity-ID':      lead.id,
       'X-Send-ID':        sendId,
       'Precedence':       'bulk',
       ...unsubscribeHeaders(lead.email),
+      ...thread.headers,
     },
   });
 
@@ -97,6 +103,8 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
     variantId,
     messageId: result.messageId,
     isFollowup,
+    subject:   thread.subject,
+    sentVia:   result.sentVia,
   });
 
   logger.info('[EmailService] Email envoyé', {
