@@ -114,3 +114,14 @@ export const authLimiter = createLimiter({
   message:  'Trop de tentatives de connexion, réessayez plus tard',
   keyFn:    req => `${req.ip}:${(req.body?.email ?? '').toLowerCase()}`,
 });
+
+// Formulaire de contact des démos : public, et chaque envoi déclenche une
+// notification email au client + passe le lead en « à rappeler ». Clé = IP
+// seule : un bot qui balaie plusieurs démos reste plafonné.
+export const contactLimiter = createLimiter({
+  name:     'contact',
+  windowMs: config.rateLimit.contactWindowMs,
+  max:      config.rateLimit.contactMax,
+  message:  'Trop d\'envois depuis cette connexion — réessayez plus tard ou appelez directement.',
+  keyFn:    req => req.ip,
+});
