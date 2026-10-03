@@ -106,6 +106,14 @@ Donne accès à `/queue/*` et `/health/details`.
 
 État en direct : onglet **Intégrations** du dashboard, ou `GET /features`.
 
+**Webhook Stripe** — endpoint `https://<BASE_URL>/billing/webhook`, événements :
+`checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+`checkout.session.async_payment_failed`, `invoice.paid`,
+`customer.subscription.updated`, `customer.subscription.deleted`.
+Sans `async_payment_succeeded`, un paiement différé (prélèvement SEPA) est
+encaissé mais jamais crédité : les crédits ne sont versés qu'une fois les
+fonds confirmés.
+
 ---
 
 ## 7. Sauvegardes & restauration
