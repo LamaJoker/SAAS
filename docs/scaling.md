@@ -77,7 +77,8 @@ verts. Elle mérite une itération dédiée, pas un fourre-tout.
 2b. ✅ **SQL des SERVICES non-transactionnels + middleware auth** sorti vers
    `queries.js` : notifyService (staleHotLeads/markHotLeadReminded), inboundService
    (findLeadsByEmail/recordInboundReply), emailService (countEmailsForSite/
-   lastEmailDaysAgo/isEmailBlacklisted/recordEmailSent/sitesForEmailQueue) ;
+   lastEmailDaysAgo/isEmailBlacklisted/recordEmailSent/sitesForEmailQueue — cette
+   dernière retirée depuis, code mort) ;
    `auth.js` passé **async** (authenticate/requireVerified/requireAdmin via repo +
    isTokenRevoked ; revokeToken via revokeJti). 112 tests verts + smoke live (auth
    cookie, requireVerified, requireAdmin, révocation au logout). Reste hors

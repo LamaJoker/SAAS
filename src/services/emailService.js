@@ -1,5 +1,5 @@
 /**
- * emailService.js — Envoi ponctuel d'un email de démo (route /resend).
+ * emailService.js — Envoi ponctuel d'un email de démo (route /resend, worker email).
  *
  * La SÉLECTION de la variante (cadence, relances) appartient à ce service ;
  * le RENDU appartient à src/email/render.js — source de vérité unique des
@@ -7,7 +7,7 @@
  */
 import { smtpPool }         from './smtpPool.js';
 import { createTrackingPixel, wrapLink } from './trackingService.js';
-import { countEmailsForSite, lastEmailDaysAgo, isEmailBlacklisted, recordEmailSent, sitesForEmailQueue, activeSequenceForSite } from '../db/queries.js';
+import { countEmailsForSite, lastEmailDaysAgo, isEmailBlacklisted, recordEmailSent, activeSequenceForSite } from '../db/queries.js';
 import { config }           from '../config/config.js';
 import { logger }           from '../utils/logger.js';
 import { randomBytes }      from 'crypto';
@@ -107,28 +107,4 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
   });
 
   return { sent: true, variant: variantId, messageId: result.messageId, isFollowup };
-}
-
-export async function processEmailQueue(userId, { followUpDays = 3, limit = 50 } = {}) {
-  const sites = await sitesForEmailQueue(userId, limit);
-
-  const stats = { sent: 0, skipped: 0, errors: 0 };
-
-  for (const row of sites) {
-    const lead = { id: row.lead_db_id, name: row.lead_name, city: row.city, email: row.lead_email };
-    const site = { id: row.id, url: row.url };
-
-    try {
-      const result = await sendDemoEmail({ lead, site, followUpDays });
-      if (result.sent) stats.sent++;
-      else stats.skipped++;
-    } catch (err) {
-      logger.error('[EmailService] Erreur envoi', { leadId: lead.id, error: err.message });
-      stats.errors++;
-    }
-
-    await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
-  }
-
-  return stats;
 }

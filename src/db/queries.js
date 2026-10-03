@@ -313,15 +313,6 @@ export async function recordEmailSent({ siteId, leadId, variantId, messageId, is
   getDb().prepare('INSERT INTO email_sends (id, site_id, lead_id, variant_id, message_id, is_followup) VALUES (?,?,?,?,?,?)')
     .run(randomBytes(8).toString('hex'), siteId, leadId, variantId, messageId, isFollowup ? 1 : 0);
 }
-export async function sitesForEmailQueue(userId, limit) {
-  return getDb().prepare(`
-    SELECT s.*, l.name as lead_name, l.city, l.email as lead_email, l.phone as lead_phone, l.id as lead_db_id
-    FROM sites s JOIN leads l ON l.id = s.lead_id
-    WHERE s.user_id = ? AND l.email IS NOT NULL
-    ORDER BY s.created_at DESC LIMIT ?
-  `).all(userId, limit);
-}
-
 export async function emailStats(userId, days) {
   const db = getDb();
   const summary = db.prepare(`
