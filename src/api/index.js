@@ -38,6 +38,13 @@ import { requestId }             from './middleware/requestId.js';
 import { usesDemoHost }          from '../utils/demoUrl.js';
 import { join } from 'path';
 
+// Un cookie mal encodé (posé par un autre service du domaine, extension,
+// client bogué) faisait lever decodeURIComponent → 500 sur TOUTES les
+// requêtes de ce navigateur. On garde la valeur brute à la place.
+function safeDecode(value) {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
 // Pages HTML servies sans suffixe .html (routing explicite ci-dessous)
 const HTML_PAGES = new Set(['/', '/login', '/register']);
 
@@ -79,7 +86,7 @@ export function createApp() {
         const i = part.indexOf('=');
         if (i === -1) continue;
         const k = part.slice(0, i).trim();
-        if (k) req.cookies[k] = decodeURIComponent(part.slice(i + 1).trim());
+        if (k) req.cookies[k] = safeDecode(part.slice(i + 1).trim());
       }
     }
     next();

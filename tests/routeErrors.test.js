@@ -55,6 +55,11 @@ describe('routes async — panne de base', () => {
     expect(bad.status).toBe(401);
   }, FAST + 1000);
 
+  it('un cookie mal encodé ne provoque pas d\'erreur serveur', async () => {
+    const res = await request(app).get('/users/me').set('Cookie', 'tracker=%E0%A4%A; authToken=abc');
+    expect(res.status).toBe(401); // token invalide, pas 500
+  });
+
   it('GET /track/click redirige le prospect même si la base est indisponible', async () => {
     clickRegistered.mockRejectedValueOnce(new Error('SQLITE_BUSY'));
     const res = await request(app).get('/track/click/abc123').redirects(0).timeout(FAST);
