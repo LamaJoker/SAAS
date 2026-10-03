@@ -6,6 +6,8 @@ import { buildSite }       from '../../services/siteBuilder.js';
 import { withRetry }       from '../../utils/utils.js';
 import { config }          from '../../config/config.js';
 import { logger }          from '../../utils/logger.js';
+import { requireVerified } from '../middleware/auth.js';
+import { generateLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -30,7 +32,10 @@ router.get('/credits', async (req, res, next) => {
 
 // Régénère le contenu d'un site existant — gratuit (le crédit a déjà été payé).
 // Utile quand l'IA a produit un contenu générique ou raté.
-router.post('/:id/regenerate', async (req, res, next) => {
+// Gratuit pour l'utilisateur, pas pour nous : chaque appel est un appel au
+// modèle. Mêmes garde-fous que POST /generate (email vérifié, quota horaire
+// partagé avec la génération).
+router.post('/:id/regenerate', requireVerified, generateLimiter, async (req, res, next) => {
   try {
     const site = await repo.sites.findByIdForUser(req.params.id, req.userId);
     if (!site) return next(Errors.notFound('Site introuvable'));
