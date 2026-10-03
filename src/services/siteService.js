@@ -7,13 +7,22 @@ import { repo }              from '../db/repo.js';
 import { getDb }             from '../db/database.js';
 import { generateSlug, withRetry } from '../utils/utils.js';
 import { logger }            from '../utils/logger.js';
-import { Errors }            from '../utils/AppError.js';
+import { Errors, AppError }  from '../utils/AppError.js';
 import { buildDemoUrl } from '../utils/demoUrl.js';
 import { config }            from '../config/config.js';
 import { rm }                from 'fs/promises';
 import { join }              from 'path';
 import { enrollSite, scoreLead, pickChannel } from './sequenceService.js';
 import { DEFAULT_TEMPLATE_ID, isValidTemplateId } from './templateService.js';
+
+export const ALREADY_GENERATED = 'ALREADY_GENERATED';
+
+function alreadyGenerated() {
+  return new AppError(
+    'Ce prospect a déjà un site. Utilisez « Régénérer » pour en renouveler le contenu.',
+    409, ALREADY_GENERATED,
+  );
+}
 
 /**
  * GenerationService — cas d'usage UNIQUE de génération d'un site pour un lead.
@@ -32,6 +41,13 @@ export async function generateSiteForLead({ userId, leadId, templateId = DEFAULT
   const lead = await repo.leads.findById(leadId);
   if (!lead)                   throw Errors.notFound('Lead introuvable');
   if (lead.user_id !== userId) throw Errors.forbidden();
+
+  // Un lead = un site. Le slug est stable par lead : générer une seconde fois
+  // réécrivait le dossier de la démo déjà envoyée au prospect, puis la
+  // compensation le supprimait (contrainte UNIQUE sur le slug) — lien mort
+  // dans un email déjà parti. Vérifié ici (évite l'appel IA) et de nouveau
+  // dans la transaction (deux requêtes simultanées).
+  if (await repo.sites.findByLeadId(leadId)) throw alreadyGenerated();
 
   const user = await repo.users.findById(userId);
   if (!user) throw Errors.unauthorized('Utilisateur introuvable');
@@ -74,6 +90,7 @@ export async function generateSiteForLead({ userId, leadId, templateId = DEFAULT
   const commit = db.transaction(() => {
     // Déduction conditionnelle : si un autre process a vidé les crédits entre
     // le check et ici, deductCredits renvoie false → on annule toute la tx.
+    if (Site.findByLeadId(leadId)) throw alreadyGenerated();
     if (!User.deductCredits(userId, cost)) {
       throw Errors.paymentRequired('Crédits insuffisants (vérification finale)');
     }
@@ -93,10 +110,14 @@ export async function generateSiteForLead({ userId, leadId, templateId = DEFAULT
   try {
     site = commit();
   } catch (err) {
-    // Compensation explicite du fichier : la DB a rollback, le HTML orphelin
-    // doit disparaître pour ne pas laisser un site sans enregistrement.
-    await rm(join(config.paths.output, slug), { recursive: true, force: true }).catch(() => {});
-    await repo.leads.updateStatus(leadId, 'error');
+    // Compensation du fichier : la DB a rollback, le HTML orphelin doit
+    // disparaître — SAUF si le slug appartient à un site enregistré (requête
+    // concurrente gagnante) : ce dossier est alors une démo publiée.
+    if (!await repo.sites.findBySlug(slug)) {
+      await rm(join(config.paths.output, slug), { recursive: true, force: true }).catch(() => {});
+    }
+    // Un conflit signifie que le site existe : le lead n'est pas en erreur.
+    if (err.code !== ALREADY_GENERATED) await repo.leads.updateStatus(leadId, 'error');
     throw err;
   }
 

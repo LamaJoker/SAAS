@@ -1,4 +1,4 @@
-import { generateSiteForLead } from '../services/siteService.js';
+import { generateSiteForLead, ALREADY_GENERATED } from '../services/siteService.js';
 import { logger }              from '../utils/logger.js';
 
 /**
@@ -15,7 +15,18 @@ import { logger }              from '../utils/logger.js';
 export async function generateHandler(job) {
   const { leadId, userId, templateId } = job.data;
 
-  const site = await generateSiteForLead({ userId, leadId, templateId });
+  let site;
+  try {
+    site = await generateSiteForLead({ userId, leadId, templateId });
+  } catch (err) {
+    // Le site existe déjà : l'objectif du job est atteint. Le relancer ne
+    // ferait que consommer des tentatives pour rien.
+    if (err.code === ALREADY_GENERATED) {
+      logger.info('[GenerateWorker] Site déjà présent — job ignoré', { leadId });
+      return { skipped: true, reason: 'already_generated' };
+    }
+    throw err;
+  }
 
   logger.info('[GenerateWorker] Site créé', { leadId, url: site.url });
   return { siteId: site.id, url: site.url };
