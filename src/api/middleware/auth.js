@@ -4,6 +4,7 @@ import { Errors } from '../../utils/AppError.js';
 import { config } from '../../config/config.js';
 import { repo }   from '../../db/repo.js';
 import { isTokenRevoked, revokeJti } from '../../db/queries.js';
+import { parseDbDate } from '../../utils/utils.js';
 
 const COOKIE_NAME = 'authToken';
 
@@ -56,7 +57,7 @@ export async function authenticate(req, res, next) {
     // Tokens émis avant un reset de mot de passe : tous invalidés d'un coup
     const user = await repo.users.findById(payload.userId);
     if (!user) return next(Errors.unauthorized('Compte introuvable'));
-    if (user.tokens_valid_after && payload.iat * 1000 < new Date(user.tokens_valid_after).getTime()) {
+    if (user.tokens_valid_after && payload.iat * 1000 < parseDbDate(user.tokens_valid_after).getTime()) {
       return next(Errors.unauthorized('Session expirée — reconnectez-vous'));
     }
 

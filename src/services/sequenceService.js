@@ -20,6 +20,7 @@ import { config }           from '../config/config.js';
 import { FOLLOWUP_IDS, VARIANT_IDS } from '../email/index.js';
 import { renderEmail, unsubscribeHeaders } from '../email/render.js';
 import { sendWhatsAppDemo, sendWhatsAppFollowup } from './whatsappService.js';
+import { parseDbDate } from '../utils/utils.js';
 
 // ─── Warmup (montée en charge progressive de l'envoi email) ─────────────────────
 // Pur, testable : plafond quotidien = start + (jours écoulés × step), borné à max.
@@ -33,7 +34,7 @@ function dailyEmailCap() {
   if (!w.enabled) return Infinity;
   const startRow = w.startedAt
     ? new Date(w.startedAt)
-    : new Date(getDb().prepare('SELECT MIN(created_at) AS d FROM email_sends').get()?.d ?? Date.now());
+    : parseDbDate(getDb().prepare('SELECT MIN(created_at) AS d FROM email_sends').get()?.d ?? Date.now());
   const daysElapsed = Math.floor((Date.now() - startRow.getTime()) / 86_400_000);
   return computeWarmupCap(w, daysElapsed);
 }
@@ -51,7 +52,7 @@ const HIGH_VALUE_ACTIVITIES = [
 
 export function scoreLead(lead, site) {
   let score = 0;
-  const ageDays = (Date.now() - new Date(lead.created_at).getTime()) / 86_400_000;
+  const ageDays = (Date.now() - parseDbDate(lead.created_at).getTime()) / 86_400_000;
   const activity = (lead.activity || '').toLowerCase();
 
   if (ageDays < 1)   score += 30;

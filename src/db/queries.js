@@ -8,6 +8,7 @@
  */
 import { getDb } from './database.js';
 import { randomBytes } from 'crypto';
+import { parseDbDate } from '../utils/utils.js';
 
 // ── Dashboard business ──────────────────────────────────────────────────────
 export async function dashboardMetrics(userId) {
@@ -304,7 +305,7 @@ export async function countEmailsForSite(siteId) {
 export async function lastEmailDaysAgo(siteId) {
   const row = getDb().prepare('SELECT created_at FROM email_sends WHERE site_id = ? ORDER BY created_at DESC LIMIT 1').get(siteId);
   if (!row) return Infinity;
-  return (Date.now() - new Date(row.created_at).getTime()) / 86_400_000;
+  return (Date.now() - parseDbDate(row.created_at).getTime()) / 86_400_000;
 }
 export async function isEmailBlacklisted(email) {
   return !!getDb().prepare('SELECT 1 FROM email_blacklist WHERE email = ?').get(email.toLowerCase());

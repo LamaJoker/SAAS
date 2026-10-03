@@ -3,6 +3,7 @@ import { repo }          from '../../db/repo.js';
 import { sendDemoEmail } from '../../services/emailService.js';
 import { Errors }        from '../../utils/AppError.js';
 import { logger }        from '../../utils/logger.js';
+import { parseDbDate }   from '../../utils/utils.js';
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ function skipMessage({ reason, nextSendAt, followUpDays }) {
 }
 
 function formatDate(sqliteUtc) {
-  const d = new Date(`${String(sqliteUtc).replace(' ', 'T')}Z`);
+  const d = parseDbDate(sqliteUtc);
   return Number.isNaN(d.getTime()) ? sqliteUtc
     : d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Paris' });
 }
