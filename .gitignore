@@ -20,3 +20,6 @@ logs/
 
 # Obsidian (notes locales)
 .obsidian/
+
+# Rapport de couverture (npm run test:coverage)
+coverage/

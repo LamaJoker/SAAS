@@ -92,6 +92,14 @@ export const config = {
     bcryptRounds:    parseInt(optional('BCRYPT_ROUNDS', '10')),
   },
 
+  // ── Instance de démonstration (vitrine) ──────────────────────────────────
+  showcase: {
+    // Affiche un bandeau sur les pages de l'application : sur un hébergement
+    // gratuit à disque éphémère (Render Free), comptes et sites sont effacés
+    // à chaque mise en veille ou redéploiement. Le visiteur doit le savoir.
+    enabled: optional('SHOWCASE_MODE', 'false') === 'true',
+  },
+
   // ── Prospection ──────────────────────────────────────────────────────────
   email: {
     // Nom affiché dans « De : » ET signature de chaque email de prospection.

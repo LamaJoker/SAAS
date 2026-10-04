@@ -29,6 +29,10 @@ services:
       # AI_API_KEY et retirer AI_MOCK_MODE.
       - key: AI_MOCK_MODE
         value: "true"
+      # Offre gratuite : disque éphémère (données effacées à chaque mise en
+      # veille / redéploiement) → bandeau « version de démonstration ».
+      - key: SHOWCASE_MODE
+        value: "true"
       # À renseigner après le 1er déploiement avec l'URL Render (ex: https://autodemo-saas.onrender.com)
       - key: BASE_URL
         sync: false

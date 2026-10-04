@@ -24,6 +24,7 @@ import billingRoutes, { stripeWebhookHandler } from './routes/billing.js';
 import crmRoutes         from './routes/crm.js';
 import inboundRoutes     from './routes/inbound.js';
 import featuresRoutes    from './routes/features.js';
+import publicConfigRoutes from './routes/publicConfig.js';
 import legalRoutes       from './routes/legal.js';
 
 import { config, validateConfig } from '../config/config.js';
@@ -179,6 +180,7 @@ export function createApp() {
   app.use('/queue',      authenticate, requireAdmin, queueRoutes); // ops/infra : admin only
   app.use('/dashboard',  authenticate, dashboardRoutes);
   app.use('/features',   authenticate, featuresRoutes);
+  app.use('/public-config', publicConfigRoutes); // drapeaux d'affichage, sans auth
   app.use('/templates',  authenticate, templatesRoutes);
   app.use('/scrape',     authenticate, requireVerified, scrapeRoutes);
 
