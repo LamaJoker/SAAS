@@ -23,3 +23,7 @@ logs/
 
 # Rapport de couverture (npm run test:coverage)
 coverage/
+
+# Artefacts Playwright (tests navigateur)
+test-results/
+playwright-report/

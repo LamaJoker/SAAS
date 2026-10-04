@@ -25,18 +25,24 @@
   if (!showcase) return;
 
   const narrow = window.matchMedia('(max-width: 600px)').matches;
+  // Dashboard : le bas de la barre latérale est vide → le bandeau s'y loge,
+  // à sa largeur, au lieu de masquer le bas du contenu principal.
+  const sidebar = !narrow && document.querySelector('.sidebar');
+  const sidebarWidth = sidebar?.getBoundingClientRect().width ?? 0;
+  const inSidebar = sidebarWidth >= 160;
 
   const banner = document.createElement('div');
   banner.className = 'showcase-banner';
   banner.setAttribute('role', 'status');
   Object.assign(banner.style, {
     position: 'fixed', zIndex: '998', bottom: narrow ? '8px' : '16px',
-    left: narrow ? '8px' : '16px', right: narrow ? '8px' : 'auto',
-    maxWidth: narrow ? 'none' : '420px',
+    left: narrow ? '8px' : (inSidebar ? '12px' : '16px'), right: narrow ? '8px' : 'auto',
+    maxWidth: narrow ? 'none' : (inSidebar ? `${Math.round(sidebarWidth) - 24}px` : '420px'),
+    fontSize: inSidebar ? '12px' : '13px',
     display: 'flex', alignItems: 'flex-start', gap: '10px',
     padding: '12px 14px', borderRadius: '10px',
     border: '1px solid #f59e0b', background: '#2a2110', color: '#fde8c2',
-    font: "13px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", lineHeight: '1.45',
     boxShadow: '0 6px 24px rgba(0, 0, 0, .35)',
   });
 
@@ -62,6 +68,11 @@
   });
   close.addEventListener('click', () => banner.remove());
 
-  banner.append(icon, text, close);
+  // Dans la barre latérale (étroite), l'icône coûte une colonne de texte
+  if (inSidebar) banner.append(text, close);
+  else banner.append(icon, text, close);
   document.body.appendChild(banner);
+  // Permet aux pages de réserver la place du bandeau (cf. .auth-page)
+  document.body.classList.add('has-showcase-banner');
+  close.addEventListener('click', () => document.body.classList.remove('has-showcase-banner'));
 })();
