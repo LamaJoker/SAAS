@@ -1,4 +1,5 @@
 import { writeFile, mkdir, rename } from 'fs/promises';
+import { randomBytes } from 'crypto';
 import { join }   from 'path';
 import { config } from '../config/config.js';
 import { sanitize } from '../utils/utils.js';
@@ -118,8 +119,10 @@ export async function buildSite({ lead, content, slug, templateId = DEFAULT_TEMP
     throw new Error(`HTML suspicieusement court (${finalHTML.length} chars) — génération incomplète`);
   }
 
-  // Écriture atomique : un crash mi-écriture ne sert jamais un fichier tronqué
-  const tmpFile = outputFile + '.tmp';
+  // Écriture atomique : un crash mi-écriture ne sert jamais un fichier tronqué.
+  // Nom temporaire unique : deux builds simultanés du même slug (génération
+  // concurrente, régénération) n'écrivent jamais dans le même fichier.
+  const tmpFile = `${outputFile}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmpFile, finalHTML, 'utf-8');
   await rename(tmpFile, outputFile);
 

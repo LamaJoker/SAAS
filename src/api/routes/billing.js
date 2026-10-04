@@ -197,6 +197,62 @@ function applyPayment(db, { eventId, eventType, user, credits, type, description
 }
 
 /**
+ * Statuts Stripe signifiant que l'argent est acquis. Avec un moyen de paiement
+ * différé (prélèvement SEPA, virement…), `checkout.session.completed` arrive
+ * avec payment_status = 'unpaid' : les fonds ne sont confirmés que plus tard,
+ * par `checkout.session.async_payment_succeeded` — ou jamais.
+ */
+const SETTLED = new Set(['paid', 'no_payment_required']);
+
+/** Montant facturé = montant réellement encaissé (coupon, ajustement Stripe). */
+function paidAmount(stripeAmount, catalogPrice) {
+  return Number.isInteger(stripeAmount) ? stripeAmount : catalogPrice;
+}
+
+/**
+ * Crédite une session Checkout payée. Appelée pour `completed` (paiement
+ * immédiat) ET `async_payment_succeeded` (paiement différé) ; pour une même
+ * session, une seule des deux voit payment_status = 'paid', donc un seul
+ * crédit. Rejeu d'un même événement : no-op (applyPayment).
+ */
+async function handleCheckoutSession(event) {
+  const db = getDb();
+  const s = event.data.object;
+  const userId = s.metadata?.userId;
+  const user = userId && await repo.users.findById(userId);
+  if (!user) return;
+
+  // Mémorise le client Stripe pour les achats/portail futurs
+  if (s.customer) await repo.users.setStripeCustomer(user.id, s.customer);
+
+  if (!SETTLED.has(s.payment_status)) {
+    logger.info('[Billing] Session finalisée, paiement en attente — crédit différé', {
+      eventId: event.id, sessionId: s.id, userId: user.id, paymentStatus: s.payment_status,
+    });
+    return;
+  }
+
+  const credits = parseInt(s.metadata?.credits, 10);
+  if (!Number.isInteger(credits) || credits <= 0) return;
+
+  if (s.metadata?.kind === 'subscription') {
+    // 1er cycle : on active l'abonnement + crédite. Les renouvellements
+    // suivants passent par invoice.paid (billing_reason=subscription_cycle).
+    await repo.users.setSubscription(user.id, { plan: s.metadata.plan, status: 'active', periodEnd: null });
+    const plan = SUBSCRIPTION_PLANS[s.metadata.plan];
+    applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
+      type: 'subscription', description: `Abonnement ${plan?.label ?? s.metadata.plan} — 1er mois`,
+      amountTtc: paidAmount(s.amount_total, plan?.price ?? 0), stripeRef: s.id });
+  } else {
+    const pack = CREDIT_PACKS[s.metadata.packId];
+    applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
+      type: 'pack', description: pack?.label ?? `${credits} crédits`,
+      amountTtc: paidAmount(s.amount_total, pack?.price ?? 0), stripeRef: s.id });
+  }
+  logger.info('[Billing] Paiement traité 💰', { eventId: event.id, userId: user.id, kind: s.metadata?.kind });
+}
+
+/**
  * Traite un événement Stripe.
  *
  * Extrait du handler HTTP pour être rejouable à l'identique depuis la route de
@@ -204,37 +260,19 @@ function applyPayment(db, { eventId, eventType, user, credits, type, description
  * handler pour déclencher le rejeu côté Stripe. Un type d'événement non géré
  * n'est pas une erreur, il sort simplement.
  */
-async function handleStripeEvent(event) {
+export async function handleStripeEvent(event) {
   const db = getDb();
 
   switch (event.type) {
-    case 'checkout.session.completed': {
+    case 'checkout.session.completed':
+    case 'checkout.session.async_payment_succeeded':
+      return handleCheckoutSession(event);
+
+    case 'checkout.session.async_payment_failed': {
       const s = event.data.object;
-      const userId = s.metadata?.userId;
-      const user = userId && await repo.users.findById(userId);
-      if (!user) return;
-
-      // Mémorise le client Stripe pour les achats/portail futurs
-      if (s.customer) await repo.users.setStripeCustomer(user.id, s.customer);
-
-      const credits = parseInt(s.metadata?.credits, 10);
-      if (!Number.isInteger(credits) || credits <= 0) return;
-
-      if (s.metadata?.kind === 'subscription') {
-        // 1er cycle : on active l'abonnement + crédite. Les renouvellements
-        // suivants passent par invoice.paid (billing_reason=subscription_cycle).
-        await repo.users.setSubscription(user.id, { plan: s.metadata.plan, status: 'active', periodEnd: null });
-        const plan = SUBSCRIPTION_PLANS[s.metadata.plan];
-        applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
-          type: 'subscription', description: `Abonnement ${plan?.label ?? s.metadata.plan} — 1er mois`,
-          amountTtc: plan?.price ?? 0, stripeRef: s.id });
-      } else {
-        const pack = CREDIT_PACKS[s.metadata.packId];
-        applyPayment(db, { eventId: event.id, eventType: event.type, user, credits,
-          type: 'pack', description: pack?.label ?? `${credits} crédits`,
-          amountTtc: pack?.price ?? 0, stripeRef: s.id });
-      }
-      logger.info('[Billing] Paiement traité 💰', { eventId: event.id, userId: user.id, kind: s.metadata?.kind });
+      logger.warn('[Billing] Paiement différé refusé — aucun crédit versé', {
+        eventId: event.id, sessionId: s.id, userId: s.metadata?.userId,
+      });
       return;
     }
 
@@ -249,7 +287,7 @@ async function handleStripeEvent(event) {
       if (inv.period_end) await repo.users.setSubscription(user.id, { plan: user.plan, status: 'active', periodEnd: new Date(inv.period_end * 1000).toISOString() });
       applyPayment(db, { eventId: event.id, eventType: event.type, user, credits: plan.credits,
         type: 'subscription', description: `Abonnement ${plan.label} — renouvellement`,
-        amountTtc: plan.price, stripeRef: inv.id });
+        amountTtc: paidAmount(inv.amount_paid, plan.price), stripeRef: inv.id });
       logger.info('[Billing] Renouvellement abonnement', { eventId: event.id, userId: user.id });
       return;
     }

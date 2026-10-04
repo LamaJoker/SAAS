@@ -32,9 +32,10 @@ export async function notifyHotLead({ userId, site, leadId = null, leadName, con
       message ? `<p style="margin:12px 0 0;padding:12px;background:#f5f5f5;border-radius:6px">"${message}"</p>` : '',
     ].filter(Boolean).join('\n');
 
-    // Actions en un clic : mise à jour du CRM sans login (token HMAC, 7 jours)
+    // Mise à jour du CRM sans login (token HMAC, 7 jours) ; le lien ouvre une
+    // confirmation, l'écriture se fait au clic sur le bouton (cf. routes/crm.js)
     const quickActions = leadId ? `
-  <p style="margin:20px 0 0;font-size:13px;color:#555">Après votre appel, un clic suffit :</p>
+  <p style="margin:20px 0 0;font-size:13px;color:#555">Après votre appel, mettez le prospect à jour :</p>
   <p style="margin:8px 0 0">
     <a href="${config.server.baseUrl}/crm/quick/${buildCrmToken(leadId, 'converti')}"
        style="background:#16a34a;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;margin-right:6px">✅ Converti</a>

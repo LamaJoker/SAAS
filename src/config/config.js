@@ -67,11 +67,17 @@ export const config = {
 
   rateLimit: {
     windowMs:       parseInt(optional('RATE_WINDOW_MS', '900000')),
-    maxRequests:    parseInt(optional('RATE_MAX_REQUESTS', '100')),
+    // Par IP, sur l'API uniquement (statiques et /health exclus). Les routes
+    // coûteuses ont leurs propres limites (auth, génération).
+    maxRequests:    parseInt(optional('RATE_MAX_REQUESTS', '300')),
     generateWindowMs: parseInt(optional('RATE_GEN_WINDOW_MS', '3600000')),
     generateMax:    parseInt(optional('RATE_GEN_MAX', '20')),
     authWindowMs:   parseInt(optional('RATE_AUTH_WINDOW_MS', '900000')),
     authMax:        parseInt(optional('RATE_AUTH_MAX', '10')),
+    // Formulaire de contact des démos (public). Chaque envoi notifie le client
+    // par email : sans plafond, un bot inonde sa boîte et son CRM.
+    contactWindowMs: parseInt(optional('RATE_CONTACT_WINDOW_MS', '3600000')),
+    contactMax:     parseInt(optional('RATE_CONTACT_MAX', '5')),
   },
 
   cors: {

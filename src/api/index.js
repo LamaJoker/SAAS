@@ -38,6 +38,9 @@ import { requestId }             from './middleware/requestId.js';
 import { usesDemoHost }          from '../utils/demoUrl.js';
 import { join } from 'path';
 
+// Pages HTML servies sans suffixe .html (routing explicite ci-dessous)
+const HTML_PAGES = new Set(['/', '/login', '/register']);
+
 export function createApp() {
   const app = express();
 
@@ -110,14 +113,12 @@ export function createApp() {
     next();
   });
 
-  app.use(globalLimiter);
-
   // CSP dédiée au frontend : réduit le rayon d'une éventuelle injection.
   // connect-src 'self' empêche l'exfiltration vers un domaine tiers ;
   // object/base/frame-ancestors verrouillés. Les styles/scripts inline du
   // dashboard sont autorisés (page first-party), Google Fonts whitelistée.
   app.use((req, res, next) => {
-    if (req.path === '/' || req.path.endsWith('.html')) {
+    if (HTML_PAGES.has(req.path) || req.path.endsWith('.html')) {
       res.setHeader('Content-Security-Policy', [
         "default-src 'self'",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
@@ -142,8 +143,16 @@ export function createApp() {
   // Frontend (login + dashboard) servi par la même origine — pas besoin de CORS
   app.use(express.static(join(config.paths.root, 'frontend')));
 
-  // Public routes — no auth needed
+  // Sonde de vie : interrogée en boucle par l'hébergeur depuis une même IP.
   app.use('/health',       healthRoutes);
+
+  // Limite globale par IP, posée APRÈS les fichiers statiques et la sonde de
+  // vie. Avant, chaque CSS/JS du dashboard et chaque health check entamait le
+  // quota : avec le rafraîchissement auto (2 requêtes / 30 s), un utilisateur
+  // actif recevait des 429 sur toute l'API en un quart d'heure.
+  app.use(globalLimiter);
+
+  // Public routes — no auth needed
   app.use('/users',        usersRoutes);
   app.use('/track',        trackingRoutes);
   app.use('/unsubscribe',  unsubscribeRoutes);

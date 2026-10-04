@@ -4,7 +4,7 @@
 
 [![Démo](https://img.shields.io/badge/d%C3%A9mo-en%20ligne-22c55e)](https://autodemo-saas.onrender.com)
 [![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-180%20passing-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-208%20passing-brightgreen)](#-tests)
 [![Evals](https://img.shields.io/badge/evals-7%20crit%C3%A8res%20automatis%C3%A9s-8b5cf6)](evals/)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com)
@@ -107,7 +107,7 @@ saas/
 ├── evals/                  # harnais d'évaluation du contenu généré (7 scoreurs, 10 cas)
 ├── templates/              # 3 templates de sites vitrines
 ├── frontend/               # dashboard + landing (HTML/CSS/JS statiques, CSP stricte)
-├── tests/                  # 21 fichiers Vitest + supertest + pg-mem (180 tests)
+├── tests/                  # 30 fichiers Vitest + supertest + pg-mem (208 tests)
 ├── docs/                   # décisions d'ingénierie, déploiement, délivrabilité, scaling
 └── deploy/                 # systemd + Docker + Caddy
 ```
@@ -166,7 +166,7 @@ npm run make-admin
 ## 🧪 Tests
 
 ```bash
-npm test           # 180 tests, 21 fichiers (Vitest)
+npm test           # 208 tests, 30 fichiers (Vitest)
 npm run test:watch
 npm run test:coverage
 npm run lint       # 0 erreur
@@ -177,6 +177,7 @@ Couverture des tests :
 - **Unitaires** — scrypt, tokens HMAC (unsub / crm), scoring, TVA & factures, rendu email (golden master), validation de schéma IA, conformité légale
 - **Intégration** (supertest) — auth par cookie, isolation multi-tenant, génération transactionnelle + crédits, arrêt de séquence sur formulaire de contact, gating admin, webhook entrant
 - **PostgreSQL** (pg-mem) — requêtes paramétrées, déduplication par index partiel, idempotence `ON CONFLICT`, claim de jobs `UPDATE … RETURNING`
+- **Scénarios d'usage réel** — double génération et requêtes simultanées sur un même lead, liens CRM visités par un scanner de messagerie, paiement SEPA différé, panne de base sur les routes async, arrêt de la séquence quand un humain reprend le lead
 - **Cas limites qui font mal en production** — rebonds email (DSN Postfix / Gmail / Exchange, classification hard vs soft), site présent en base mais fichier disparu du disque, purge qui doit épargner un lead engagé commercialement, agrégation avant suppression des événements
 
 ---

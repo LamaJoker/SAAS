@@ -2,6 +2,7 @@ import express from 'express';
 import { repo, EVENT_TYPES } from '../../db/repo.js';
 import { markContactFollowup } from '../../db/queries.js';
 import { validateSlug }  from '../middleware/validate.js';
+import { contactLimiter } from '../middleware/rateLimiter.js';
 import { sanitizeInput } from '../../utils/utils.js';
 import { Errors }        from '../../utils/AppError.js';
 import { logger }        from '../../utils/logger.js';
@@ -14,7 +15,7 @@ const router = express.Router();
  * Public (le prospect n'a pas de compte). C'est LE signal de conversion :
  * le scoring lui donne 100/100 et le propriétaire du lead doit rappeler vite.
  */
-router.post('/:slug', validateSlug, async (req, res, next) => {
+router.post('/:slug', validateSlug, contactLimiter, async (req, res, next) => {
   try {
     const site = await repo.sites.findBySlug(req.params.slug);
     if (!site) return next(Errors.notFound('Site introuvable'));
@@ -46,14 +47,18 @@ router.post('/:slug', validateSlug, async (req, res, next) => {
 
     // Notification au propriétaire — après la réponse, jamais bloquant
     setImmediate(async () => {
-      const lead = await repo.leads.findById(site.lead_id);
-      notifyHotLead({
-        userId:   site.user_id,
-        site:     { slug: site.slug, url: site.url },
-        leadId:   site.lead_id, // pour les liens d'action CRM en un clic
-        leadName: lead?.name ?? site.slug,
-        contact:  { name, phone, email, message },
-      });
+      try {
+        const lead = await repo.leads.findById(site.lead_id);
+        await notifyHotLead({
+          userId:   site.user_id,
+          site:     { slug: site.slug, url: site.url },
+          leadId:   site.lead_id, // pour les liens d'action CRM
+          leadName: lead?.name ?? site.slug,
+          contact:  { name, phone, email, message },
+        });
+      } catch (err) {
+        logger.error('[Contact] Notification échouée', { slug: site.slug, error: err.message });
+      }
     });
   } catch (err) {
     next(err);

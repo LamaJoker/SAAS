@@ -17,6 +17,9 @@ export const Site = {
   findByIdForUser(id, userId) {
     return getDb().prepare('SELECT * FROM sites WHERE id = ? AND user_id = ?').get(id, userId);
   },
+  findByLeadId(leadId) {
+    return getDb().prepare('SELECT * FROM sites WHERE lead_id = ? LIMIT 1').get(leadId);
+  },
   findBySlug(slug) {
     return getDb().prepare('SELECT * FROM sites WHERE slug = ?').get(slug);
   },

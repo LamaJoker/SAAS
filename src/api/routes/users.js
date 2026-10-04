@@ -92,13 +92,17 @@ router.post('/register', authLimiter, async (req, res, next) => {
 });
 
 // ─── Vérification d'email ─────────────────────────────────────────────────────
-router.get('/verify/:token', async (req, res) => {
-  const user = await repo.users.findByVerifyToken(hashToken(req.params.token));
-  if (!user) {
-    return res.redirect('/index.html?verified=invalid');
+router.get('/verify/:token', async (req, res, next) => {
+  try {
+    const user = await repo.users.findByVerifyToken(hashToken(req.params.token));
+    if (!user) {
+      return res.redirect('/index.html?verified=invalid');
+    }
+    await repo.users.markVerified(user.id);
+    res.redirect('/index.html?verified=1');
+  } catch (err) {
+    next(err);
   }
-  await repo.users.markVerified(user.id);
-  res.redirect('/index.html?verified=1');
 });
 
 router.post('/resend-verification', authenticate, authLimiter, async (req, res, next) => {
@@ -193,17 +197,25 @@ router.post('/login', authLimiter, async (req, res, next) => {
   }
 });
 
-router.post('/logout', authenticate, async (req, res) => {
-  await revokeToken(req.tokenJti, req.tokenExp);
-  clearAuthCookie(res);
-  res.json({ success: true, data: { logged_out: true } });
+router.post('/logout', authenticate, async (req, res, next) => {
+  try {
+    await revokeToken(req.tokenJti, req.tokenExp);
+    clearAuthCookie(res);
+    res.json({ success: true, data: { logged_out: true } });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ─── Profil ───────────────────────────────────────────────────────────────────
 router.get('/me', authenticate, async (req, res, next) => {
-  const user = await repo.users.findById(req.userId);
-  if (!user) return next(Errors.unauthorized());
-  res.json({ success: true, data: publicUser(user) });
+  try {
+    const user = await repo.users.findById(req.userId);
+    if (!user) return next(Errors.unauthorized());
+    res.json({ success: true, data: publicUser(user) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ─── Export RGPD (droit à la portabilité, art. 20) ────────────────────────────

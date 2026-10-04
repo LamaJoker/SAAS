@@ -1,4 +1,6 @@
-    const API_BASE = window.API_BASE || 'http://localhost:3000';
+    // API servie par la même origine que le frontend : chemins relatifs.
+    // window.API_BASE reste une surcharge possible (API sur un autre domaine).
+    const API_BASE = window.API_BASE ?? '';
 
     // ── Auth ──────────────────────────────────────────────────────────────────
     // L'authentification repose sur le cookie HttpOnly (envoyé automatiquement
