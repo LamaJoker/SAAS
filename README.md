@@ -4,7 +4,7 @@
 
 [![Démo](https://img.shields.io/badge/d%C3%A9mo-en%20ligne-22c55e)](https://autodemo-saas.onrender.com)
 [![CI](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/SAAS/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-256%20passing-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-259%20passing-brightgreen)](#-tests)
 [![Evals](https://img.shields.io/badge/evals-7%20crit%C3%A8res%20automatis%C3%A9s-8b5cf6)](evals/)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com)
@@ -17,7 +17,7 @@ AutoDemo est une plateforme d'acquisition B2B de bout en bout : elle **scrape** 
 
 ## 👀 Voir le résultat
 
-**[→ Application en ligne](https://autodemo-saas.onrender.com)** — créez un compte et générez un site en trois clics. Aucune clé API requise.
+**[→ Application en ligne](https://autodemo-saas.onrender.com)** — créez un compte et générez un site en trois clics. Aucune clé API requise. Instance de démonstration sur hébergement gratuit : les données sont effacées après quelques minutes d'inactivité, et l'envoi d'emails y est désactivé.
 
 **[→ Exemples de sites générés](https://lamajoker.github.io/SAAS/)** — trois sorties réelles du générateur, un template chacun, produites à partir d'une seule ligne de données : nom, activité, ville.
 
@@ -107,7 +107,7 @@ saas/
 ├── evals/                  # harnais d'évaluation du contenu généré (7 scoreurs, 10 cas)
 ├── templates/              # 3 templates de sites vitrines
 ├── frontend/               # dashboard + landing (HTML/CSS/JS statiques, CSP stricte)
-├── tests/                  # 37 fichiers Vitest + supertest + pg-mem (256 tests)
+├── tests/                  # 38 fichiers Vitest + supertest + pg-mem (259 tests)
 ├── docs/                   # décisions d'ingénierie, déploiement, délivrabilité, scaling
 └── deploy/                 # systemd + Docker + Caddy
 ```
@@ -166,7 +166,8 @@ npm run make-admin
 ## 🧪 Tests
 
 ```bash
-npm test           # 256 tests, 37 fichiers (Vitest)
+npm test           # 259 tests, 38 fichiers (Vitest)
+npm run test:e2e   # parcours visiteur dans Chromium (npx playwright install chromium)
 npm run test:watch
 npm run test:coverage
 npm run lint       # 0 erreur
@@ -177,6 +178,7 @@ Couverture des tests :
 - **Unitaires** — scrypt, tokens HMAC (unsub / crm), scoring, TVA & factures, rendu email (golden master), validation de schéma IA, conformité légale
 - **Intégration** (supertest) — auth par cookie, isolation multi-tenant, génération transactionnelle + crédits, arrêt de séquence sur formulaire de contact, gating admin, webhook entrant
 - **PostgreSQL** (pg-mem) — requêtes paramétrées, déduplication par index partiel, idempotence `ON CONFLICT`, claim de jobs `UPDATE … RETURNING`
+- **Navigateur** (Playwright, en CI) — accueil → inscription → lead → génération → démo, serveur en configuration de production ; échoue sur toute requête vers une autre origine, erreur JS ou violation de CSP
 - **Scénarios d'usage réel** — double génération et requêtes simultanées sur un même lead, liens CRM visités par un scanner de messagerie, paiement SEPA différé, panne de base sur les routes async, arrêt de la séquence quand un humain reprend le lead
 - **Cas limites qui font mal en production** — rebonds email (DSN Postfix / Gmail / Exchange, classification hard vs soft), site présent en base mais fichier disparu du disque, purge qui doit épargner un lead engagé commercialement, agrégation avant suppression des événements
 

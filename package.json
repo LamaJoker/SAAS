@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "check": "npm run lint && npm test",
     "audit:optional": "npm i --no-save --no-audit stripe playwright bullmq ioredis imapflow twilio pg && npm audit",
     "demos:rebase": "node scripts/rebaseDemoUrls.js",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
+    "@playwright/test": "1.56.0",
     "@vitest/coverage-v8": "^2.1.0",
     "eslint": "^9.13.0",
     "pg-mem": "^3.0.14",

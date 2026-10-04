@@ -83,7 +83,7 @@ export default [
 
   // ─── Tests (Vitest) ───────────────────────────────────────────────────────
   {
-    files: ['tests/**/*.js'],
+    files: ['tests/**/*.js', 'e2e/**/*.js', 'playwright.config.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

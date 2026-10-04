@@ -81,11 +81,17 @@ a:hover { color: var(--clr-primary-h); }
 /* ─── AUTH PAGE ──────────────────────────────────────────────────────────────── */
 .auth-page {
   display: flex;
+  flex-direction: column;          /* pied de page sous la carte, pas à côté */
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  padding: 24px 16px;
   background: var(--clr-bg);
 }
+
+/* Bandeau vitrine (showcase.js) : place réservée en bas pour qu'il ne
+   recouvre jamais la carte de connexion. */
+.auth-page.has-showcase-banner { padding-bottom: 120px; }
 
 .auth-card {
   background: var(--clr-surface);

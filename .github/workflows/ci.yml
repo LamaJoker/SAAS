@@ -45,3 +45,31 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build (validation du Dockerfile)
         run: docker build -t autodemo:ci .
+
+  e2e:
+    # Parcours d'un visiteur dans un vrai navigateur, serveur en configuration
+    # de production. Les tests d'API ne chargent aucune page : c'est ce trou
+    # qui a laissé le frontend appeler localhost:3000 en production.
+    name: Parcours navigateur (Playwright)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Navigateur Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Parcours de bout en bout
+        run: npm run test:e2e
+      - name: Captures et traces en cas d'échec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
