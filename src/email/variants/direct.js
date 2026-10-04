@@ -1,19 +1,19 @@
 /**
  * Variante "direct" — zéro blabla
- * Angle : site prêt, gratuit, regardez
+ * Angle : site prêt, en ligne, regardez
  */
 
 export const id = 'direct';
 
 export const subject = ({ city }) =>
-  `Votre site à ${city} — démo gratuite`;
+  `Votre site à ${city} — démo prête`;
 
 export const text = ({ name, trackedUrl, sender }) =>
 `Bonjour,
 
 Site démo pour ${name} : ${trackedUrl}
 
-Gratuit. Prêt. Regardez.
+Prêt. En ligne. Regardez.
 
 ${sender}`;
 
@@ -26,7 +26,7 @@ export const html = ({ name, trackedUrl, sender, pixelUrl, unsubFooter }) => `
       ${trackedUrl.slice(0, 55)}…
     </a>
   </p>
-  <p>Gratuit. Prêt. Regardez.</p>
+  <p>Prêt. En ligne. Regardez.</p>
   <p>${sender}</p>
   ${unsubFooter}
   <img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />

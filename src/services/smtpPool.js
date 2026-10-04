@@ -14,7 +14,8 @@ function dkimOption() {
   };
 }
 
-class SmtpPool {
+// Exportée pour les tests ; l'application utilise l'instance `smtpPool`.
+export class SmtpPool {
   #transporters = [];
   #index        = 0;
   #hourly       = new Map();
@@ -62,7 +63,11 @@ class SmtpPool {
     this.#resetTimer.unref();
   }
 
-  #pick() {
+  /**
+   * @param {string|null} preferUser compte à privilégier (celui qui a ouvert le
+   *        fil de conversation) ; ignoré s'il est en quarantaine ou au quota.
+   */
+  #pick(preferUser = null) {
     const now = Date.now();
     const available = this.#transporters.filter(e => {
       if (!e.healthy || e.quarantineUntil > now) return false;
@@ -71,6 +76,11 @@ class SmtpPool {
     });
 
     if (!available.length) throw new Error('SMTP_POOL_EXHAUSTED');
+
+    if (preferUser) {
+      const preferred = available.find(e => e.cfg.user === preferUser);
+      if (preferred) return preferred; // hors rotation : n'avance pas l'index
+    }
 
     const entry = available[this.#index % available.length];
     this.#index = (this.#index + 1) % available.length;
@@ -102,12 +112,17 @@ class SmtpPool {
       throw new Error('SMTP_MAX_FAILOVER: tous les transporteurs en échec');
     }
 
-    const entry = this.#pick();
+    // fromName : nom affiché imposé par l'appelant, identique quel que soit le
+    // compte choisi (l'adresse, elle, reste celle du compte authentifié).
+    // preferUser : compte à réutiliser pour garder une adresse stable dans un
+    // fil de conversation. Ni l'un ni l'autre n'est transmis à nodemailer.
+    const { fromName, preferUser, ...options } = mailOptions;
+    const entry = this.#pick(preferUser);
     const { t, cfg } = entry;
-    const from = mailOptions.from ?? `"${cfg.senderName ?? 'AutoDemo'}" <${cfg.user}>`;
+    const from = options.from ?? `"${fromName ?? cfg.senderName ?? 'AutoDemo'}" <${cfg.user}>`;
 
     try {
-      const result = await t.sendMail({ ...mailOptions, from });
+      const result = await t.sendMail({ ...options, from });
       const stats  = this.#hourly.get(cfg.user);
       if (stats) stats.sent++;
       logger.info('[SmtpPool] Envoyé', { to: mailOptions.to, via: cfg.user, messageId: result.messageId });

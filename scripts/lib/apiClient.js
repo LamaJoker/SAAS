@@ -76,7 +76,7 @@ export async function createApiClient(opts = {}) {
    * @param {string} path   chemin API, ex. '/leads'
    * @param {RequestInit} [options]
    */
-  async function apiFetch(path, options = {}) {
+  async function request(path, options = {}) {
     const r = await fetch(`${baseUrl}${path}`, {
       ...options,
       headers: {
@@ -87,10 +87,31 @@ export async function createApiClient(opts = {}) {
     });
     const body = await readJson(r, path);
     if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status} sur ${path}`);
-    return body.data;
+    return body;
   }
 
-  return { userId, baseUrl, apiFetch };
+  async function apiFetch(path, options = {}) {
+    return (await request(path, options)).data;
+  }
+
+  /**
+   * Lit TOUTES les pages d'une liste paginée (ex. '/leads'). apiFetch seul ne
+   * renvoie que la première page (50 éléments par défaut) : un script qui s'y
+   * fiait ignorait silencieusement tout le reste.
+   *
+   * @param {string} path  chemin sans query string
+   */
+  async function apiFetchAll(path, pageSize = 200) {
+    const items = [];
+    for (let page = 1; ; page++) {
+      const body = await request(`${path}?limit=${pageSize}&page=${page}`);
+      items.push(...(body.data ?? []));
+      const pages = body.pagination?.pages ?? 1;
+      if (page >= pages) return items;
+    }
+  }
+
+  return { userId, baseUrl, apiFetch, apiFetchAll };
 }
 
 /** Parse une réponse en JSON en donnant un message utile quand ce n'en est pas. */

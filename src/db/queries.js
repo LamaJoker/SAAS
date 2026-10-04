@@ -8,6 +8,7 @@
  */
 import { getDb } from './database.js';
 import { randomBytes } from 'crypto';
+import { parseDbDate } from '../utils/utils.js';
 
 // ── Dashboard business ──────────────────────────────────────────────────────
 export async function dashboardMetrics(userId) {
@@ -292,30 +293,37 @@ export async function recordInboundReply(leadId, userId, subject, snippet) {
 }
 
 // ── Emailing : cadence + traçage des envois ─────────────────────────────────
+/** Entrée de séquence encore active pour ce site (envoi automatique à venir). */
+export async function activeSequenceForSite(siteId) {
+  return getDb().prepare(
+    "SELECT next_send_at FROM email_sequence WHERE site_id = ? AND status = 'pending'"
+  ).get(siteId) ?? null;
+}
 export async function countEmailsForSite(siteId) {
   return getDb().prepare('SELECT COUNT(*) as n FROM email_sends WHERE site_id = ?').get(siteId)?.n ?? 0;
 }
 export async function lastEmailDaysAgo(siteId) {
   const row = getDb().prepare('SELECT created_at FROM email_sends WHERE site_id = ? ORDER BY created_at DESC LIMIT 1').get(siteId);
   if (!row) return Infinity;
-  return (Date.now() - new Date(row.created_at).getTime()) / 86_400_000;
+  return (Date.now() - parseDbDate(row.created_at).getTime()) / 86_400_000;
 }
 export async function isEmailBlacklisted(email) {
   return !!getDb().prepare('SELECT 1 FROM email_blacklist WHERE email = ?').get(email.toLowerCase());
 }
-export async function recordEmailSent({ siteId, leadId, variantId, messageId, isFollowup = false }) {
-  getDb().prepare('INSERT INTO email_sends (id, site_id, lead_id, variant_id, message_id, is_followup) VALUES (?,?,?,?,?,?)')
-    .run(randomBytes(8).toString('hex'), siteId, leadId, variantId, messageId, isFollowup ? 1 : 0);
-}
-export async function sitesForEmailQueue(userId, limit) {
-  return getDb().prepare(`
-    SELECT s.*, l.name as lead_name, l.city, l.email as lead_email, l.phone as lead_phone, l.id as lead_db_id
-    FROM sites s JOIN leads l ON l.id = s.lead_id
-    WHERE s.user_id = ? AND l.email IS NOT NULL
-    ORDER BY s.created_at DESC LIMIT ?
-  `).all(userId, limit);
+export async function recordEmailSent({ siteId, leadId, variantId, messageId, isFollowup = false, subject = null, sentVia = null }) {
+  getDb().prepare(`
+    INSERT INTO email_sends (id, site_id, lead_id, variant_id, message_id, is_followup, subject, sent_via)
+    VALUES (?,?,?,?,?,?,?,?)
+  `).run(randomBytes(8).toString('hex'), siteId, leadId, variantId, messageId ?? '', isFollowup ? 1 : 0, subject, sentVia);
 }
 
+/** Emails déjà envoyés pour ce site, du plus ancien au plus récent (fil des relances). */
+export async function emailThreadForSite(siteId) {
+  return getDb().prepare(`
+    SELECT message_id, subject, sent_via FROM email_sends
+    WHERE site_id = ? ORDER BY created_at ASC, rowid ASC
+  `).all(siteId);
+}
 export async function emailStats(userId, days) {
   const db = getDb();
   const summary = db.prepare(`

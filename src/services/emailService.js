@@ -1,5 +1,5 @@
 /**
- * emailService.js — Envoi ponctuel d'un email de démo (route /resend).
+ * emailService.js — Envoi ponctuel d'un email de démo (route /resend, worker email).
  *
  * La SÉLECTION de la variante (cadence, relances) appartient à ce service ;
  * le RENDU appartient à src/email/render.js — source de vérité unique des
@@ -7,32 +7,38 @@
  */
 import { smtpPool }         from './smtpPool.js';
 import { createTrackingPixel, wrapLink } from './trackingService.js';
-import { countEmailsForSite, lastEmailDaysAgo, isEmailBlacklisted, recordEmailSent, sitesForEmailQueue } from '../db/queries.js';
+import { countEmailsForSite, lastEmailDaysAgo, isEmailBlacklisted, recordEmailSent, activeSequenceForSite, emailThreadForSite } from '../db/queries.js';
+import { config }           from '../config/config.js';
 import { logger }           from '../utils/logger.js';
 import { randomBytes }      from 'crypto';
-import { config }           from '../config/config.js';
-import { buildUnsubToken }  from '../utils/unsubToken.js';
 import { VARIANT_IDS, getVariant } from '../email/index.js';
-import { renderEmail }      from '../email/render.js';
+import { renderEmail, unsubscribeHeaders } from '../email/render.js';
+import { buildThread }      from '../email/thread.js';
 
-const SENDER_NAMES = ['Alex', 'Marc', 'Thomas', 'Julie', 'Sarah'];
-
-function pickSender() {
-  return SENDER_NAMES[Math.floor(Math.random() * SENDER_NAMES.length)];
-}
+/** Plafond d'emails par prospect, toutes sources confondues (séquence + manuel). */
+export const MAX_EMAILS_PER_SITE = 3;
 
 /**
  * Cadence : premier envoi = variante A/B au hasard parmi les 5 ;
- * relance 1 = relance_soft, relance 2 = relance_directe ; stop après 3.
+ * relance 1 = relance_soft, relance 2 = relance_directe.
  */
-function pickVariantId(emailsSent, daysSinceLast, followUpDays = 3) {
+function pickVariantId(emailsSent) {
   if (emailsSent === 0) {
     return VARIANT_IDS[Math.floor(Math.random() * VARIANT_IDS.length)];
   }
-  if (emailsSent >= 3 || daysSinceLast < followUpDays) return null;
   return emailsSent === 1 ? 'relance_soft' : 'relance_directe';
 }
 
+/**
+ * Envoi ponctuel d'un email de démo (relance manuelle depuis le dashboard).
+ *
+ * `forceVariantId` choisit le TEXTE, jamais l'autorisation d'envoyer : avant,
+ * le passer contournait le plafond de 3 emails et l'espacement minimal, ce qui
+ * permettait de relancer un prospect sans limite.
+ *
+ * Une séquence automatique encore active bloque l'envoi manuel : les deux
+ * partiraient à quelques heures d'écart et le prospect recevrait deux relances.
+ */
 export async function sendDemoEmail({ lead, site, forceVariantId = null, followUpDays = 3 }) {
   if (!smtpPool.isConfigured) {
     logger.warn('[EmailService] SMTP non configuré — email ignoré', { leadId: lead.id });
@@ -45,20 +51,26 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
     return { skipped: true, reason: 'blacklisted' };
   }
 
-  const emailsSent    = await countEmailsForSite(site.id);
+  const active = await activeSequenceForSite(site.id);
+  if (active) {
+    return { skipped: true, reason: 'sequence_active', nextSendAt: active.next_send_at };
+  }
+
+  const emailsSent = await countEmailsForSite(site.id);
+  if (emailsSent >= MAX_EMAILS_PER_SITE) {
+    return { skipped: true, reason: 'sequence_complete' };
+  }
   const daysSinceLast = await lastEmailDaysAgo(site.id);
-  const isFollowup    = emailsSent > 0;
+  if (daysSinceLast < followUpDays) {
+    return { skipped: true, reason: 'too_soon', followUpDays };
+  }
 
   const variantId = forceVariantId && getVariant(forceVariantId)
     ? forceVariantId
-    : pickVariantId(emailsSent, daysSinceLast, followUpDays);
-
-  if (!variantId) {
-    return { skipped: true, reason: 'sequence_complete_or_too_soon' };
-  }
-
-  const sender = pickSender();
-  const sendId = randomBytes(8).toString('hex');
+    : pickVariantId(emailsSent);
+  const isFollowup = emailsSent > 0;
+  const sender     = config.email.senderName;
+  const sendId     = randomBytes(8).toString('hex');
 
   const { token, pixelUrl } = createTrackingPixel({ siteId: site.id, leadId: lead.id, variant: variantId });
   const trackedUrl = wrapLink({ url: site.url, token, label: 'cta' });
@@ -69,14 +81,19 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
     toEmail: lead.email,
   });
 
+  // Une relance manuelle s'inscrit dans le fil existant (cf. email/thread.js)
+  const thread = buildThread(await emailThreadForSite(site.id), subject);
+
   const result = await smtpPool.send({
-    to: lead.email, subject, text, html,
+    to: lead.email, subject: thread.subject, text, html,
+    fromName: sender, preferUser: thread.preferSender,
     headers: {
       'X-Variant':        variantId,
       'X-Entity-ID':      lead.id,
       'X-Send-ID':        sendId,
       'Precedence':       'bulk',
-      'List-Unsubscribe': `<${config.server.baseUrl}/unsubscribe/${buildUnsubToken(lead.email)}>`,
+      ...unsubscribeHeaders(lead.email),
+      ...thread.headers,
     },
   });
 
@@ -86,6 +103,8 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
     variantId,
     messageId: result.messageId,
     isFollowup,
+    subject:   thread.subject,
+    sentVia:   result.sentVia,
   });
 
   logger.info('[EmailService] Email envoyé', {
@@ -96,28 +115,4 @@ export async function sendDemoEmail({ lead, site, forceVariantId = null, followU
   });
 
   return { sent: true, variant: variantId, messageId: result.messageId, isFollowup };
-}
-
-export async function processEmailQueue(userId, { followUpDays = 3, limit = 50 } = {}) {
-  const sites = await sitesForEmailQueue(userId, limit);
-
-  const stats = { sent: 0, skipped: 0, errors: 0 };
-
-  for (const row of sites) {
-    const lead = { id: row.lead_db_id, name: row.lead_name, city: row.city, email: row.lead_email };
-    const site = { id: row.id, url: row.url };
-
-    try {
-      const result = await sendDemoEmail({ lead, site, followUpDays });
-      if (result.sent) stats.sent++;
-      else stats.skipped++;
-    } catch (err) {
-      logger.error('[EmailService] Erreur envoi', { leadId: lead.id, error: err.message });
-      stats.errors++;
-    }
-
-    await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
-  }
-
-  return stats;
 }

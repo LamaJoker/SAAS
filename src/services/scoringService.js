@@ -1,4 +1,5 @@
 import { getDb } from '../db/database.js';
+import { parseDbDate } from '../utils/utils.js';
 
 /**
  * Calcule un score d'engagement 0-100 pour un site donné.
@@ -36,7 +37,7 @@ export function computeEngagementScore(site, events = []) {
 
   // ── Fraîcheur de la dernière visite ────────────────────────────────────────
   if (site.last_viewed) {
-    const daysSince = (Date.now() - new Date(site.last_viewed).getTime()) / 86_400_000;
+    const daysSince = (Date.now() - parseDbDate(site.last_viewed).getTime()) / 86_400_000;
     if (daysSince < 1)  score += 25;
     else if (daysSince < 3)  score += 18;
     else if (daysSince < 7)  score += 10;
@@ -45,10 +46,10 @@ export function computeEngagementScore(site, events = []) {
 
   // ── Visite après réception d'un email (corrélation forte) ──────────────────
   if (emailEvents.length > 0 && viewEvents.length > 0) {
-    const lastEmailDate = new Date(
-      emailEvents.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0].created_at
+    const lastEmailDate = parseDbDate(
+      emailEvents.sort((a, b) => parseDbDate(b.created_at) - parseDbDate(a.created_at))[0].created_at
     );
-    const viewedAfterEmail = viewEvents.some(e => new Date(e.created_at) > lastEmailDate);
+    const viewedAfterEmail = viewEvents.some(e => parseDbDate(e.created_at) > lastEmailDate);
     if (viewedAfterEmail) score += 20; // A cliqué le lien de la démo
   }
 

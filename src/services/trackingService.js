@@ -1,6 +1,7 @@
 import { getDb }       from '../db/database.js';
 import { config }      from '../config/config.js';
 import { createHash, randomBytes } from 'crypto';
+import { parseDbDate } from '../utils/utils.js';
 
 function generateToken(siteId, variant) {
   const raw = `${siteId}:${variant}:${randomBytes(8).toString('hex')}`;
@@ -34,7 +35,7 @@ const MACHINE_UA_RE = /GoogleImageProxy|YahooMailProxy|Barracuda|Proofpoint|Mime
 export function isMachineOpen({ sentAt, openAt = Date.now(), prefetchSeconds = 10, userAgent = '' }) {
   if (MACHINE_UA_RE.test(userAgent)) return true;
   if (!sentAt) return false;
-  const deltaSec = (new Date(openAt).getTime() - new Date(sentAt).getTime()) / 1000;
+  const deltaSec = (parseDbDate(openAt).getTime() - parseDbDate(sentAt).getTime()) / 1000;
   return deltaSec >= 0 && deltaSec < prefetchSeconds;
 }
 

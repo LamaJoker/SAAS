@@ -5,6 +5,8 @@
 
 export const id = 'relance_directe';
 
+// Objet utilisé seulement hors fil : en séquence, la relance part en
+// « Re: <objet du premier email> » (cf. email/thread.js).
 export const subject = ({ name }) =>
   `Dernier message — ${name}`;
 

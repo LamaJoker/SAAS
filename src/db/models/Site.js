@@ -25,7 +25,8 @@ export const Site = {
   },
   findAllByUser(userId) {
     return getDb().prepare(`
-      SELECT s.*, l.name AS lead_name, l.city
+      -- lead_email : le dashboard en a besoin pour proposer « Relancer »
+      SELECT s.*, l.name AS lead_name, l.city, l.email AS lead_email
       FROM sites s
       JOIN leads l ON l.id = s.lead_id
       WHERE s.user_id = ? ORDER BY s.created_at DESC

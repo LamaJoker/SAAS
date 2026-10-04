@@ -4,6 +4,7 @@ import { Errors } from '../../utils/AppError.js';
 import { config } from '../../config/config.js';
 import { repo }   from '../../db/repo.js';
 import { isTokenRevoked, revokeJti } from '../../db/queries.js';
+import { parseDbDate } from '../../utils/utils.js';
 
 const COOKIE_NAME = 'authToken';
 
@@ -35,9 +36,19 @@ export async function authenticate(req, res, next) {
   if (!token) {
     return next(Errors.unauthorized('Token manquant'));
   }
-  try {
-    const payload = jwt.verify(token, config.security.jwtSecret);
 
+  // Seule la vérification du JWT relève du 401. Une panne de base pendant les
+  // contrôles suivants est une erreur serveur (500) : la traduire en 401
+  // faisait déconnecter l'utilisateur par le dashboard à chaque SQLITE_BUSY.
+  let payload;
+  try {
+    payload = jwt.verify(token, config.security.jwtSecret);
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') return next(Errors.unauthorized('Token expiré'));
+    return next(Errors.unauthorized('Token invalide'));
+  }
+
+  try {
     // Token explicitement révoqué (logout)
     if (payload.jti && await isTokenRevoked(payload.jti)) {
       return next(Errors.unauthorized('Session terminée'));
@@ -46,7 +57,7 @@ export async function authenticate(req, res, next) {
     // Tokens émis avant un reset de mot de passe : tous invalidés d'un coup
     const user = await repo.users.findById(payload.userId);
     if (!user) return next(Errors.unauthorized('Compte introuvable'));
-    if (user.tokens_valid_after && payload.iat * 1000 < new Date(user.tokens_valid_after).getTime()) {
+    if (user.tokens_valid_after && payload.iat * 1000 < parseDbDate(user.tokens_valid_after).getTime()) {
       return next(Errors.unauthorized('Session expirée — reconnectez-vous'));
     }
 
@@ -55,8 +66,7 @@ export async function authenticate(req, res, next) {
     req.tokenExp = payload.exp ?? null;
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') return next(Errors.unauthorized('Token expiré'));
-    next(Errors.unauthorized('Token invalide'));
+    next(err);
   }
 }
 

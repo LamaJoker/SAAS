@@ -51,3 +51,21 @@ export function formatListToHTML(items, className = '') {
   const lis  = items.map(i => `    <li>${sanitize(String(i))}</li>`).join('\n');
   return `<ul${attr}>\n${lis}\n</ul>`;
 }
+
+/**
+ * Date lue en base → Date. SQLite écrit `datetime('now')` en UTC SANS fuseau
+ * (« 2026-10-03 18:00:00 ») ; `new Date()` lit ce format comme une heure
+ * LOCALE. Sur un serveur hors UTC (VPS réglé sur Europe/Paris, cf. le service
+ * systemd fourni), toute comparaison avec maintenant était décalée de
+ * l'offset : invalidation de sessions, filtre d'ouvertures automatiques,
+ * scoring, cadence d'envoi. Les ISO complets (avec Z ou offset) passent tels quels.
+ */
+const SQLITE_DATETIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/;
+
+export function parseDbDate(value) {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' && SQLITE_DATETIME_RE.test(value)) {
+    return new Date(`${value.replace(' ', 'T')}Z`);
+  }
+  return new Date(value);
+}

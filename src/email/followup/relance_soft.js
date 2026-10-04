@@ -5,8 +5,10 @@
 
 export const id = 'relance_soft';
 
+// Objet utilisé seulement hors fil : en séquence, la relance part en
+// « Re: <objet du premier email> » (cf. email/thread.js).
 export const subject = ({ name }) =>
-  `Re: ${name}`;
+  `${name} — votre démo est toujours en ligne`;
 
 export const text = ({ trackedUrl, sender }) =>
 `Bonjour,

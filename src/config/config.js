@@ -92,6 +92,14 @@ export const config = {
     bcryptRounds:    parseInt(optional('BCRYPT_ROUNDS', '10')),
   },
 
+  // ── Prospection ──────────────────────────────────────────────────────────
+  email: {
+    // Nom affiché dans « De : » ET signature de chaque email de prospection.
+    // Un seul nom : le prospect doit reconnaître le même expéditeur d'un
+    // email à l'autre, quel que soit le compte SMTP choisi par la rotation.
+    senderName: optional('SMTP_SENDER_NAME', 'AutoDemo'),
+  },
+
   // ── Facturation (identité vendeur + TVA pour les factures légales) ─────────
   billing: {
     seller: {

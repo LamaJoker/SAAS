@@ -42,6 +42,24 @@ describe('routes async — panne de base', () => {
     expect(res.body.requestId).toBeTruthy();
   }, FAST + 1000);
 
+  it('une panne de base pendant l\'authentification renvoie 500, pas 401 (pas de déconnexion)', async () => {
+    const agent = request.agent(app);
+    await agent.post('/users/register').send({ email: `auth-${Date.now()}@test.fr`, password: 'Password1234' });
+
+    vi.spyOn(repo.users, 'findById').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+    const res = await agent.get('/sites/credits').timeout(FAST);
+    expect(res.status).toBe(500);
+
+    // Le JWT invalide reste, lui, un 401
+    const bad = await request(app).get('/sites/credits').set('Authorization', 'Bearer abc.def.ghi');
+    expect(bad.status).toBe(401);
+  }, FAST + 1000);
+
+  it('un cookie mal encodé ne provoque pas d\'erreur serveur', async () => {
+    const res = await request(app).get('/users/me').set('Cookie', 'tracker=%E0%A4%A; authToken=abc');
+    expect(res.status).toBe(401); // token invalide, pas 500
+  });
+
   it('GET /track/click redirige le prospect même si la base est indisponible', async () => {
     clickRegistered.mockRejectedValueOnce(new Error('SQLITE_BUSY'));
     const res = await request(app).get('/track/click/abc123').redirects(0).timeout(FAST);

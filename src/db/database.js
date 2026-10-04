@@ -359,6 +359,19 @@ const MIGRATIONS = [
     `,
   },
 
+  {
+    version: 14,
+    name: 'email_threading',
+    sql: `
+      -- Relances = vraies réponses au premier email : il faut son objet exact
+      -- (« Re: <objet> ») et son Message-ID (déjà stocké). sent_via mémorise le
+      -- compte SMTP utilisé, pour que tout le fil parte de la même adresse
+      -- malgré la rotation du pool.
+      ALTER TABLE email_sends ADD COLUMN subject TEXT;
+      ALTER TABLE email_sends ADD COLUMN sent_via TEXT;
+    `,
+  },
+
 ];
 
 export function runMigrations() {
